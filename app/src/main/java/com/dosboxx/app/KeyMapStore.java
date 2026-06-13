@@ -136,8 +136,8 @@ public final class KeyMapStore {
     /**
      * Per-game "joystick mode": the gamepad is passed through to DOS as a real
      * joystick instead of being translated to keyboard keys. Stored alongside
-     * the keymap in the same JSON file. OFF by default — the long-press
-     * "Joystick mode: ON" toggle in the games list opts a game in.
+     * the keymap in the same JSON file. OFF by default; the in-game KEY/JOY
+     * overlay toggle opts a game in.
      *
      * Migration: the old build wrote "joystick":true into every file it
      * created (even games that never opted in), so users upgrading to the

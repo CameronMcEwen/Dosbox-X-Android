@@ -1,14 +1,14 @@
 # DOSBox-X Android
 
 Android launcher and handheld front-end for DOSBox-X, focused on DOS games and
-Windows 98 CD game installs on devices such as the Retroid Pocket.
+Windows 95/98/ME CD game installs on devices such as the Retroid Pocket.
 
 The app bundles the native DOSBox-X core and adds an Android-native launcher,
-storage setup, CD archive management, per-game controls, and Win98 boot helpers.
+storage setup, CD archive management, per-game controls, and Windows 9x boot helpers.
 
 ## Features
 
-- Unified games list for DOS folders, DOS CD games, Windows 98, and Win98 games.
+- Unified games list for DOS folders, DOS CD games, and Windows 95/98/ME games.
 - First-run storage wizard for choosing app-specific device or removable storage
   for `games/`, `cds/`, and imports.
 - Storage manager for ZIP sources, kept extracted CDs, temporary extracts,
@@ -18,9 +18,9 @@ storage setup, CD archive management, per-game controls, and Win98 boot helpers.
   - one temporary extracted CD at a time under `cds/.prepared-cds/run_*`.
   - optional kept extracts under `cds/.extracted-cds/`.
   - kept extracts and source archives can both be selected from `+ Add CD game`.
-- Windows 98 boot flow that mounts the selected CD as `D:` for installers that
+- Windows 9x boot flow that mounts the selected CD as `D:` for installers that
   expect the CD-ROM there.
-- Per-game metadata for DOS/Win98 type, CD/rip state, and remembered CD source.
+- Per-game metadata for DOS/Windows 9x type, CD/rip state, and remembered CD source.
 - Per-game gamepad mappings and mouse/trackpad modes.
 - Software Voodoo support through DOSBox-X for Glide-era games.
 
@@ -36,13 +36,12 @@ storage this is commonly:
 Inside that base folder:
 
 ```text
-games/                 installed DOS games and the Win98 bundle
+games/                 installed DOS games and user-supplied Windows images
 cds/                   visible standalone CD images only
 cds/.archives/         reusable ZIP CD source packages
 cds/.prepared-cds/     one temporary extracted CD mount at a time
 cds/.extracted-cds/    optional kept extracted CD images
 import/                transient imports
-WinBox98/              Windows 98 disk images, if present
 ```
 
 The visible launcher does not show ZIP sources directly. Use `+ Add CD game`
@@ -50,11 +49,21 @@ to select from the hidden archive collection or kept extracted CDs. New files
 are imported through Android's system file picker, so the app does not request
 broad external storage access.
 
-## Windows 98 Notes
+## Windows 95/98/ME Notes
 
-For Windows 98 CD setup, the launcher boots with:
+The app does not include or download Microsoft Windows disk images. To use an
+installed Windows 95, 98, or ME guest, copy your own bootable `.img` hard disk
+image into the app storage folder, for example:
 
-- Win98 hard disk as `C:`
+```text
+games/WinBox95/windows95.img
+games/WinBox98/windows98.img
+games/WinBoxME/windowsme.img
+```
+
+For Windows 9x CD setup, the launcher boots with:
+
+- Windows hard disk as `C:`
 - selected CD-ROM as `D:`
 
 This avoids installers failing because they expect the CD in `D:`. Install the
@@ -73,15 +82,6 @@ Repository secrets required by the workflow:
 - `ANDROID_KEY_PASSWORD`
 
 The workflow uploads `app-release.aab` as a run artifact.
-
-Optional Win98 image download:
-
-- Add `WIN98_IMAGE_URL` as a repository secret to bake a default HTTPS URL into
-  the app.
-- The URL must point to a `.zip` or raw `.img`.
-- ZIP archives should contain `windows98.img` or another OS-sized `.img`;
-  optional boot floppies such as `WIN98C.IMG` can be included too.
-- Users can also paste or replace the URL from the app's Storage screen.
 
 ## Project Layout
 

@@ -212,6 +212,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      * GameLauncherActivity before it starts us. A null map means "use the
      * hard-coded defaults" (see mapGamepadButtonToKey). */
     public static Map<String, Integer> sKeyMap = null;
+    private String mDosBoxGameName;
 
     // Main components
     protected static SDLActivity mSingleton;
@@ -471,6 +472,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         try {
             String game = getIntent() != null ? getIntent().getStringExtra(EXTRA_GAME_NAME) : null;
             if (game != null && !game.isEmpty()) {
+                mDosBoxGameName = game;
                 setKeyMap(com.dosboxx.app.KeyMapStore.load(this, game));
                 setJoystickMode(com.dosboxx.app.KeyMapStore.loadJoystickMode(this, game));
                 setStickMouseMode(com.dosboxx.app.KeyMapStore.loadStickMouseMode(this, game));
@@ -785,6 +787,35 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mLayout.addView(toggle, tlp);
         mOverlayButtons.add(toggle);
 
+        // Per-game gamepad mode. Tap switches between keyboard mapping and a
+        // real DOS joystick; long-press edits the keyboard mapping for KEY mode.
+        final android.widget.Button padMode = new android.widget.Button(this);
+        updatePadModeButton(padMode);
+        padMode.setTextColor(0xFFFFFFFF);
+        padMode.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10);
+        padMode.setAllCaps(false);
+        padMode.setBackgroundColor(0xA0303030);
+        padMode.setPadding(pad, pad, pad, pad);
+        RelativeLayout.LayoutParams jlp = new RelativeLayout.LayoutParams(
+            (int)(58*d), (int)(40*d));
+        jlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        jlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
+        jlp.leftMargin = (int)(52*d);
+        padMode.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                togglePadMode(padMode);
+            }
+        });
+        padMode.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                showGamepadMapper();
+                showOverlayButtons();
+                return true;
+            }
+        });
+        mLayout.addView(padMode, jlp);
+        mOverlayButtons.add(padMode);
+
         // Disc picker (2+ discs mounted): the swap set is fixed at boot, but
         // any disc in it can be put in the drive by name. Top-right, left of ✕.
         if (sCdNames.size() >= 2) {
@@ -850,6 +881,157 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mOverlayButtons.add(exitBtn);
 
         showOverlayButtons();   // visible on launch, then auto-hide after 2s
+    }
+
+    private void updatePadModeButton(android.widget.Button b) {
+        b.setText(sJoystickMode ? "JOY" : "KEY");
+    }
+
+    private void togglePadMode(android.widget.Button b) {
+        boolean next = !sJoystickMode;
+        if (next) releaseStickKeys();
+        setJoystickMode(next);
+        if (mDosBoxGameName != null && !mDosBoxGameName.isEmpty()) {
+            com.dosboxx.app.KeyMapStore.saveJoystickMode(this, mDosBoxGameName, next);
+        }
+        updatePadModeButton(b);
+        Toast.makeText(this,
+            next ? "JOY mode: gamepad is a DOS joystick."
+                 : "KEY mode: gamepad maps to keyboard keys.",
+            Toast.LENGTH_SHORT).show();
+        showOverlayButtons();
+    }
+
+    private void showGamepadMapper() {
+        if (mDosBoxGameName == null || mDosBoxGameName.isEmpty()) {
+            Toast.makeText(this, "No game name for control mapping.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final Map<String, Integer> map = keyMapForEdit();
+        String[] rows = new String[com.dosboxx.app.KeyMapStore.BUTTONS.length];
+        for (int i = 0; i < com.dosboxx.app.KeyMapStore.BUTTONS.length; i++) {
+            String button = com.dosboxx.app.KeyMapStore.BUTTONS[i];
+            Integer v = map.get(button);
+            rows[i] = button + "  ->  "
+                + com.dosboxx.app.KeyMapStore.keycodeLabel(v != null ? v : KeyEvent.KEYCODE_UNKNOWN);
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("KEY mode buttons")
+            .setItems(rows, new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int which) {
+                    showGamepadTargetPicker(com.dosboxx.app.KeyMapStore.BUTTONS[which], map);
+                }
+            })
+            .setNeutralButton("Reset", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int which) {
+                    com.dosboxx.app.KeyMapStore.save(SDLActivity.this, mDosBoxGameName, null);
+                    setKeyMap(null);
+                    Toast.makeText(SDLActivity.this, "Button mappings reset.", Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("Close", null)
+            .show();
+    }
+
+    private Map<String, Integer> keyMapForEdit() {
+        Map<String, Integer> saved = com.dosboxx.app.KeyMapStore.load(this, mDosBoxGameName);
+        return saved != null
+            ? new java.util.HashMap<String, Integer>(saved)
+            : com.dosboxx.app.KeyMapStore.newDefaultMap();
+    }
+
+    private void showGamepadTargetPicker(final String button, final Map<String, Integer> map) {
+        final int[] codes = controlTargetCodes();
+        String[] labels = new String[codes.length];
+        for (int i = 0; i < codes.length; i++) {
+            labels[i] = com.dosboxx.app.KeyMapStore.keycodeLabel(codes[i]);
+        }
+        new AlertDialog.Builder(this)
+            .setTitle(button + " sends...")
+            .setItems(labels, new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int which) {
+                    map.put(button, codes[which]);
+                    com.dosboxx.app.KeyMapStore.save(SDLActivity.this, mDosBoxGameName, map);
+                    setKeyMap(map);
+                    Toast.makeText(SDLActivity.this,
+                        button + " -> " + com.dosboxx.app.KeyMapStore.keycodeLabel(codes[which]),
+                        Toast.LENGTH_SHORT).show();
+                    showGamepadMapper();
+                }
+            })
+            .setNegativeButton("Back", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int which) {
+                    showGamepadMapper();
+                }
+            })
+            .show();
+    }
+
+    private static int[] controlTargetCodes() {
+        return new int[] {
+            KeyEvent.KEYCODE_UNKNOWN,
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_ESCAPE,
+            KeyEvent.KEYCODE_SPACE,
+            KeyEvent.KEYCODE_CTRL_LEFT,
+            KeyEvent.KEYCODE_ALT_LEFT,
+            KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent.KEYCODE_TAB,
+            com.dosboxx.app.KeyMapStore.TARGET_MOUSE_LEFT,
+            com.dosboxx.app.KeyMapStore.TARGET_MOUSE_RIGHT,
+            KeyEvent.KEYCODE_A,
+            KeyEvent.KEYCODE_B,
+            KeyEvent.KEYCODE_C,
+            KeyEvent.KEYCODE_D,
+            KeyEvent.KEYCODE_E,
+            KeyEvent.KEYCODE_F,
+            KeyEvent.KEYCODE_G,
+            KeyEvent.KEYCODE_H,
+            KeyEvent.KEYCODE_I,
+            KeyEvent.KEYCODE_J,
+            KeyEvent.KEYCODE_K,
+            KeyEvent.KEYCODE_L,
+            KeyEvent.KEYCODE_M,
+            KeyEvent.KEYCODE_N,
+            KeyEvent.KEYCODE_O,
+            KeyEvent.KEYCODE_P,
+            KeyEvent.KEYCODE_Q,
+            KeyEvent.KEYCODE_R,
+            KeyEvent.KEYCODE_S,
+            KeyEvent.KEYCODE_T,
+            KeyEvent.KEYCODE_U,
+            KeyEvent.KEYCODE_V,
+            KeyEvent.KEYCODE_W,
+            KeyEvent.KEYCODE_X,
+            KeyEvent.KEYCODE_Y,
+            KeyEvent.KEYCODE_Z,
+            KeyEvent.KEYCODE_0,
+            KeyEvent.KEYCODE_1,
+            KeyEvent.KEYCODE_2,
+            KeyEvent.KEYCODE_3,
+            KeyEvent.KEYCODE_4,
+            KeyEvent.KEYCODE_5,
+            KeyEvent.KEYCODE_6,
+            KeyEvent.KEYCODE_7,
+            KeyEvent.KEYCODE_8,
+            KeyEvent.KEYCODE_9,
+            KeyEvent.KEYCODE_F1,
+            KeyEvent.KEYCODE_F2,
+            KeyEvent.KEYCODE_F3,
+            KeyEvent.KEYCODE_F4,
+            KeyEvent.KEYCODE_F5,
+            KeyEvent.KEYCODE_F6,
+            KeyEvent.KEYCODE_F7,
+            KeyEvent.KEYCODE_F8,
+            KeyEvent.KEYCODE_F9,
+            KeyEvent.KEYCODE_F10,
+            KeyEvent.KEYCODE_F11,
+            KeyEvent.KEYCODE_F12
+        };
     }
 
     /** Separate cursor/navigation pad so the main keyboard can keep full-width keys. */

@@ -29,8 +29,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -69,7 +67,7 @@ public class GameLauncherActivity extends Activity {
     // suppression; any other value = the position whose tap should be
     // suppressed for this single click.
     private int mSuppressNextRowTap = -1;
-    private File mPendingBootDisc;   // the one CD to mount for the next Win98 boot (or null)
+    private File mPendingBootDisc;   // the one CD to mount for the next Windows 9x boot (or null)
     private File mPendingSetupFolder;   // the folder to chain the launch-picker into after the emulator returns
     private boolean mPendingSetupFromCd;   // true when the setup chain started from a CD install (defaults to "needs CD")
 
@@ -169,7 +167,9 @@ public class GameLauncherActivity extends Activity {
         new AlertDialog.Builder(this)
             .setTitle("Set up storage")
             .setMessage("DOSBox-X needs folders for games, CD archives, extracted CDs, and imports.\n\n"
-                + "Current folder:\n" + base.getAbsolutePath())
+                + "Current folder:\n" + base.getAbsolutePath()
+                + "\n\nFor Windows 95, 98, or ME, copy your own bootable .img into a folder here, for example:\n"
+                + osImageExampleText(base))
             .setPositiveButton("Use this folder", (d, w) -> acceptCurrentStorage())
             .setNeutralButton("Choose folder", (d, w) -> chooseFolder())
             .setNegativeButton("Use app folder", (d, w) -> applyNewBase(AppConfig.defaultBase(this)))
@@ -212,8 +212,8 @@ public class GameLauncherActivity extends Activity {
             () -> manageStorageFolder("Visible CD images", cdsDir, true, true));
         addStorageButton(box, "Installed games", dialog,
             () -> manageStorageFolder("Installed games", gamesDir, false));
-        addStorageButton(box, "Download Windows 98 image...", dialog,
-            () -> promptDownloadWin98Image());
+        addStorageButton(box, "Windows 95/98/ME image location", dialog,
+            () -> showOsImageInstructions());
         addStorageButton(box, "Import folder", dialog,
             () -> manageStorageFolder("Import folder", importDir, true));
         addStorageButton(box, "Clear all DOS games", dialog, () -> confirmClearAllDos());
@@ -349,7 +349,7 @@ public class GameLauncherActivity extends Activity {
         new AlertDialog.Builder(this)
             .setTitle("Clear all DOS games?")
             .setMessage("This deletes:\n"
-                + "• every game folder under games/ (not the Win98 OS bundle)\n"
+                + "• every game folder under games/ (not the Windows 9x OS bundle)\n"
                 + "• every disc in the CD library\n"
                 + "• every entry in the import folder\n"
                 + "• every per-game keymap and metadata file.\n\n"
@@ -360,7 +360,7 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void clearAllDos() {
-        // The Windows 98 OS bundle lives in games/ as a folder with a big
+        // The Windows 9x OS bundle lives in games/ as a folder with a big
         // .img inside — find it first so we don't delete it.
         File bootBundle = findBootFolder();
         File[] kids = gamesDir.listFiles();
@@ -390,199 +390,24 @@ public class GameLauncherActivity extends Activity {
         rescan();
     }
 
-    private void promptDownloadWin98Image() {
-        String url = configuredWin98ImageUrl();
-        if (TextUtils.isEmpty(url)) {
-            promptSetWin98DownloadUrl("");
-            return;
-        }
-        confirmWin98Download(url);
-    }
-
-    private String configuredWin98ImageUrl() {
-        String saved = AppConfig.win98ImageUrl(this);
-        if (!TextUtils.isEmpty(saved)) return saved.trim();
-        return getString(R.string.win98_image_url).trim();
-    }
-
-    private void promptSetWin98DownloadUrl(String current) {
-        final EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint("https://example.com/windows98.zip");
-        input.setText(current);
-        input.setSelectAllOnFocus(true);
-        int pad = dp(20);
-        input.setPadding(pad, pad / 2, pad, pad / 2);
+    private void showOsImageInstructions() {
+        File base = AppConfig.baseDir(this);
         new AlertDialog.Builder(this)
-            .setTitle("Windows 98 image URL")
-            .setMessage("Paste an HTTPS URL for a .zip or raw .img that you are allowed to use.")
-            .setView(input)
-            .setPositiveButton("Save", (d, w) -> {
-                String url = input.getText().toString().trim();
-                if (!isSupportedWin98DownloadUrl(url)) {
-                    Toast.makeText(this, "Use an HTTPS .zip or .img URL.", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                AppConfig.setWin98ImageUrl(this, url);
-                confirmWin98Download(url);
-            })
-            .setNegativeButton("Cancel", null)
+            .setTitle("Windows 95/98/ME images")
+            .setMessage("Copy your own installed, bootable Windows 95, 98, or ME hard disk image into the storage folder.\n\n"
+                + osImageExampleText(base)
+                + "\n\nThe image must be an .img hard disk image, usually 256 MB or larger. "
+                + "After copying it, tap Refresh and it will appear as a bootable desktop entry.")
+            .setPositiveButton("Open installed games", (d, w) ->
+                manageStorageFolder("Installed games", gamesDir, false))
+            .setNegativeButton("Close", null)
             .show();
     }
 
-    private void confirmWin98Download(final String url) {
-        File existing = findBootFolder();
-        String msg = "Download and install the Windows 98 image into:\n"
-            + new File(AppConfig.baseDir(this), "WinBox98").getAbsolutePath()
-            + "\n\nSource:\n" + url;
-        if (existing != null) {
-            msg += "\n\nExisting image folder will be replaced:\n" + existing.getAbsolutePath();
-        }
-        new AlertDialog.Builder(this)
-            .setTitle("Download Windows 98 image?")
-            .setMessage(msg)
-            .setPositiveButton("Download", (d, w) -> downloadAndInstallWin98Image(url))
-            .setNeutralButton("Change URL", (d, w) -> promptSetWin98DownloadUrl(url))
-            .setNegativeButton("Cancel", null)
-            .show();
-    }
-
-    private static boolean isSupportedWin98DownloadUrl(String url) {
-        if (url == null) return false;
-        String u = url.trim().toLowerCase(Locale.US);
-        String path = downloadUrlPath(u);
-        return u.startsWith("https://")
-            && (path.endsWith(".zip") || path.endsWith(".img"));
-    }
-
-    private static String downloadUrlPath(String url) {
-        try {
-            return new URL(url).getPath().toLowerCase(Locale.US);
-        } catch (Exception e) {
-            return url == null ? "" : url.toLowerCase(Locale.US);
-        }
-    }
-
-    private void downloadAndInstallWin98Image(final String url) {
-        final int pad = dp(20);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad, pad, pad);
-        final TextView msg = new TextView(this);
-        msg.setText("Starting download...");
-        msg.setTextColor(0xFFE0E0E0);
-        box.addView(msg);
-        final ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bar.setIndeterminate(true);
-        bar.setMax(1000);
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.topMargin = dp(12);
-        box.addView(bar, blp);
-        final AlertDialog dlg = new AlertDialog.Builder(this)
-            .setTitle("Windows 98 image")
-            .setView(box)
-            .setCancelable(false)
-            .show();
-
-        new Thread(() -> {
-            String error = null;
-            File staging = null;
-            File finalBootDir = new File(AppConfig.baseDir(this), "WinBox98");
-            try {
-                if (!isSupportedWin98DownloadUrl(url)) {
-                    throw new IOException("Use an HTTPS .zip or .img URL.");
-                }
-                staging = uniqueDir(new File(importDir, ".win98-download"));
-                if (!staging.mkdirs()) throw new IOException("Couldn't create download folder.");
-                String lower = downloadUrlPath(url);
-                String ext = lower.endsWith(".zip") ? ".zip" : ".img";
-                File payload = new File(staging, "download" + ext);
-                downloadFile(url, payload, (done, total) -> updateWin98DownloadProgress(
-                    msg, bar, "Downloading", done, total));
-
-                File extracted = new File(staging, "WinBox98");
-                if (!extracted.mkdirs()) throw new IOException("Couldn't create install folder.");
-                if (ext.equals(".img")) {
-                    File out = new File(extracted, "windows98.img");
-                    if (!payload.renameTo(out) && !(copyFile(payload, out) && payload.delete())) {
-                        throw new IOException("Couldn't stage downloaded image.");
-                    }
-                } else {
-                    boolean ok = ArchiveExtractor.extractDiscImages(payload, extracted,
-                        (done, total) -> updateWin98DownloadProgress(msg, bar, "Extracting", done, total));
-                    if (!ok) throw new IOException("Couldn't extract downloaded archive.");
-                }
-                if (findBootImage(extracted) == null) {
-                    throw new IOException("Downloaded file did not contain a bootable Windows 98 .img.");
-                }
-                if (finalBootDir.exists() && !deleteTree(finalBootDir)) {
-                    throw new IOException("Couldn't replace existing WinBox98 folder.");
-                }
-                if (!moveTree(extracted, finalBootDir)) {
-                    throw new IOException("Couldn't install WinBox98 folder.");
-                }
-            } catch (IOException e) {
-                error = e.getMessage();
-            } finally {
-                if (staging != null && staging.exists()) deleteTree(staging);
-            }
-            final String fError = error;
-            runOnUiThread(() -> {
-                dlg.dismiss();
-                if (fError == null) {
-                    Toast.makeText(this, "Windows 98 image installed.", Toast.LENGTH_LONG).show();
-                    rescan();
-                } else {
-                    Toast.makeText(this, "Download failed: " + fError, Toast.LENGTH_LONG).show();
-                }
-            });
-        }).start();
-    }
-
-    private void updateWin98DownloadProgress(final TextView msg, final ProgressBar bar,
-                                             final String label, final long done,
-                                             final long total) {
-        runOnUiThread(() -> {
-            if (total > 0) {
-                int permille = (int) Math.min(1000, done * 1000 / total);
-                bar.setIndeterminate(false);
-                bar.setProgress(permille);
-                msg.setText(String.format(Locale.US, "%s %d%%   (%d / %d MB)",
-                    label, permille / 10, done >> 20, total >> 20));
-            } else {
-                msg.setText(label + " " + (done >> 20) + " MB...");
-            }
-        });
-    }
-
-    private static void downloadFile(String url, File out, ArchiveExtractor.Progress progress)
-            throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(30000);
-        conn.setReadTimeout(30000);
-        conn.setInstanceFollowRedirects(true);
-        int code = conn.getResponseCode();
-        if (code < 200 || code >= 300) throw new IOException("HTTP " + code);
-        long total = conn.getContentLengthLong();
-        long done = 0;
-        long lastReport = -1;
-        try (InputStream in = conn.getInputStream();
-             OutputStream os = new FileOutputStream(out)) {
-            byte[] buf = new byte[1 << 16];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                os.write(buf, 0, n);
-                done += n;
-                if (progress != null && (done - lastReport >= (2L << 20) || lastReport < 0)) {
-                    lastReport = done;
-                    progress.onProgress(done, total);
-                }
-            }
-        } finally {
-            conn.disconnect();
-        }
-        if (progress != null) progress.onProgress(done, total);
+    private String osImageExampleText(File base) {
+        return new File(base, "games/WinBox95/windows95.img").getAbsolutePath()
+            + "\n" + new File(base, "games/WinBox98/windows98.img").getAbsolutePath()
+            + "\n" + new File(base, "games/WinBoxME/windowsme.img").getAbsolutePath();
     }
 
     private void chooseFolder() {
@@ -958,9 +783,9 @@ public class GameLauncherActivity extends Activity {
                 rescan();
                 if (fWinVer >= 5) {
                     new AlertDialog.Builder(this)
-                        .setTitle("May not run in Windows 98")
+                        .setTitle("May not run in Windows 9x")
                         .setMessage("This CD's program needs Windows 2000/XP (build " + fWinVer
-                            + ".x) and probably won't run in the Windows 98 guest.")
+                            + ".x) and probably won't run in the Windows 95/98/ME guest.")
                         .setPositiveButton("OK", null)
                         .show();
                 }
@@ -1163,7 +988,7 @@ public class GameLauncherActivity extends Activity {
             keep.setPadding(dp(20), dp(8), dp(20), dp(8));
             b.setView(keep);
         }
-        b.setPositiveButton("Windows 98", (d, w) -> {
+        b.setPositiveButton(windowsBootName(findBootFolder()), (d, w) -> {
             if (archive && keep.isChecked()) {
                 prepareArchiveCd(media, true, prepared -> setupWin98FromMedia(prepared));
             } else {
@@ -1224,7 +1049,7 @@ public class GameLauncherActivity extends Activity {
         title.setTextSize(22);
         root.addView(title);
 
-        // Two direct setup entry points. Each one asks MS-DOS vs Windows 98
+        // Two direct setup entry points. Each one asks MS-DOS vs Windows 9x
         // after the file is picked and then boots/mounts the right target.
         importActions = new LinearLayout(this);
         importActions.setOrientation(LinearLayout.HORIZONTAL);
@@ -1363,20 +1188,20 @@ public class GameLauncherActivity extends Activity {
     private void buildGamesList(List<String> labels) {
         final File boot = findBootFolder();
 
-        // Windows 98 desktop (boot the OS with no CD — full disk speed).
+        // Windows 9x desktop (boot the OS with no CD — full disk speed).
         if (boot != null) {
             File validD = firstGamesDisk(boot);
             File badD = firstInvalidGamesDisk(boot);
-            labels.add(formatRow("▶  Windows 98 desktop", "—", "—",
+            labels.add(formatRow("▶  " + windowsBootName(boot) + " desktop", "—", "—",
                 validD != null ? "D: ready" : (badD != null ? "D: repair" : "")));
             rowTap.add(() -> bootWin98Desktop(boot));
             rowHold.add(() -> onLongPick(boot));
             rowHasMenu.add(true);
         }
 
-        // Installed game folders (minus the Win98 OS) and local disk images,
+        // Installed game folders (minus the Windows 9x OS) and local disk images,
         // each once. CD library media is listed separately as mount-only
-        // media; it is not an installed game until a DOS folder or Win98 D:
+        // media; it is not an installed game until a DOS folder or Windows D:
         // install exists.
         List<File> entries = new ArrayList<>();
         File[] kids = gamesDir.listFiles();
@@ -1385,7 +1210,7 @@ public class GameLauncherActivity extends Activity {
             for (File f : kids) {
                 if (f.getName().startsWith(".")) continue;       // .c = per-ISO C: drives
                 if (f.isDirectory()) {
-                    if (findBootImage(f) != null) continue;       // the Win98 OS (desktop above)
+                    if (findBootImage(f) != null) continue;       // the Windows OS (desktop above)
                     if (!hasInstallContent(f)) continue;
                     entries.add(f);
                 } else {
@@ -1430,7 +1255,7 @@ public class GameLauncherActivity extends Activity {
                 if (new File(gamesDir, dn).exists()) continue;
                 final String name = dn;
                 final boolean needsCd = GameMeta.needsCd(this, name, false);
-                labels.add(formatRow("💾 " + name, "WIN98", needsCd ? "CD" : "rip", "on D:"));
+                labels.add(formatRow("💾 " + name, windowsTypeLabel(boot), needsCd ? "CD" : "rip", "on D:"));
                 rowTap.add(() -> playWin98Game(name, boot, needsCd));
                 rowHold.add(() -> onWin98DiskGameMenu(gd, name, boot));
                 rowHasMenu.add(true);
@@ -1484,7 +1309,7 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void mountCdMediaDialog(final File disc, final File boot) {
-        final String[] items = new String[]{"Mount/setup in MS-DOS", "Mount in Windows 98"};
+        final String[] items = new String[]{"Mount/setup in MS-DOS", "Mount in " + windowsBootName(boot)};
         new AlertDialog.Builder(this)
             .setTitle(discName(disc))
             .setItems(items, (d, w) -> {
@@ -1498,7 +1323,7 @@ public class GameLauncherActivity extends Activity {
     private void onCdMediaMenu(final File disc, final File boot) {
         List<String> menu = new ArrayList<>();
         menu.add("Mount/setup in MS-DOS");
-        menu.add("Mount in Windows 98");
+        menu.add("Mount in " + windowsBootName(boot));
         menu.add("Copy CD contents to MS-DOS drive...");
         if (boot != null) menu.add("Copy CD contents to Windows drive...");
         menu.add("Delete CD media...");
@@ -1522,13 +1347,13 @@ public class GameLauncherActivity extends Activity {
         final boolean isLibraryDisc = entry.getParentFile() != null && entry.getParentFile().equals(cdsDir);
         final boolean isDisc = !entry.isDirectory()
             && (isLibraryDisc ? isCdImageFile(entry) : isIsoCueOrBin(entry));
-        // auto defaults: discs -> DOS if they hold DOS programs else WIN98; folders/.img -> DOS
+        // auto defaults: discs -> DOS if they hold DOS programs else Windows 9x; folders/.img -> DOS
         String autoPlat = (isDisc && !isDosDisc(entry)) ? GameMeta.WIN98 : GameMeta.DOS;
         final String plat = GameMeta.platform(this, name, autoPlat);
         final boolean needsCd = GameMeta.needsCd(this, name, defaultNeedsCd(entry, plat));
         // Soft tag for the import flow: [ready] once a launch exe is recorded,
         // [setup] if a setup exe is recorded but the user hasn't picked the
-        // game yet, otherwise nothing (the standard DOS/Win98 + CD/rip row).
+        // game yet, otherwise nothing (the standard DOS/Windows + CD/rip row).
         String soft = "";
         if (entry.isDirectory() && !name.startsWith(".")) {
             if (hasStoredLaunch(entry))      soft = "ready";
@@ -1536,7 +1361,7 @@ public class GameLauncherActivity extends Activity {
         }
         String prefix = entry.isDirectory() ? "📁 " : "💿 ";
         labels.add(formatRow(prefix + name,
-            plat.equals(GameMeta.WIN98) ? "WIN98" : "DOS",
+            plat.equals(GameMeta.WIN98) ? windowsTypeLabel(boot) : "DOS",
             needsCd ? "CD" : "rip",
             soft));
         rowTap.add(() -> {
@@ -1634,17 +1459,17 @@ public class GameLauncherActivity extends Activity {
         }
     }
 
-    /** Boot Windows 98 from the desktop row, using any CD inserted for the
+    /** Boot Windows 9x from the desktop row, using any CD inserted for the
      *  next boot. */
     private void bootWin98Desktop(final File boot) {
         if (boot == null) {
-            Toast.makeText(this, "No Windows 98 image found in the games folder.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No Windows 95/98/ME image found in the games folder.", Toast.LENGTH_LONG).show();
             return;
         }
         if (firstGamesDisk(boot) == null) {
             File bad = firstInvalidGamesDisk(boot);
             if (bad != null) {
-                promptRepairGamesDisk(boot, bad, "Windows 98 D: needs repair",
+                promptRepairGamesDisk(boot, bad, windowsBootName(boot) + " D: needs repair",
                     "The existing " + bad.getName() + " is " + gamesDiskProblem(bad)
                     + ", so it will not be mounted as D:. Replace it with a 4 GB writable games disk?",
                     () -> bootWin98(boot, null),
@@ -1655,11 +1480,11 @@ public class GameLauncherActivity extends Activity {
         bootWin98(boot, null);
     }
 
-    /** Boot Windows 98 with `disc` in the drive. A null disc keeps any CD that
+    /** Boot Windows 9x with `disc` in the drive. A null disc keeps any CD that
      *  was inserted for the next boot, otherwise the boot starts with no CD. */
     private void bootWin98(File boot, File disc) {
         if (boot == null) {
-            Toast.makeText(this, "No Windows 98 image found in the games folder.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No Windows 95/98/ME image found in the games folder.", Toast.LENGTH_LONG).show();
             return;
         }
         if (disc != null) {
@@ -1690,7 +1515,7 @@ public class GameLauncherActivity extends Activity {
 
     private void promptPickWin98CdFromLibrary(final String gameName, final File boot) {
         if (boot == null) {
-            Toast.makeText(this, "No Windows 98 image found in the games folder.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No Windows 95/98/ME image found in the games folder.", Toast.LENGTH_LONG).show();
             return;
         }
         pickCdFromLibrary(gameName + " needs its CD", gameName, disc -> {
@@ -1704,18 +1529,18 @@ public class GameLauncherActivity extends Activity {
             });
     }
 
-    /** Start a Windows 98 install session from a CD image or ZIP rip. A ZIP is
+    /** Start a Windows 9x install session from a CD image or ZIP rip. A ZIP is
      *  converted to an ISO because booted Windows cannot see Android folders.
      *  The media is mounted for this boot only, so it is effectively ejected
      *  when the emulator exits. */
     public void setupWin98FromMedia(final File media) {
         final File boot = findBootFolder();
         if (boot == null) {
-            Toast.makeText(this, "No Windows 98 image found in the games folder.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No Windows 95/98/ME image found in the games folder.", Toast.LENGTH_LONG).show();
             return;
         }
         Toast.makeText(this,
-            "Booting Windows 98 with " + media.getName() + ". The CD should be D:\\.",
+            "Booting " + windowsBootName(boot) + " with " + media.getName() + ". The CD should be D:\\.",
             Toast.LENGTH_LONG).show();
         bootWin98(boot, media);
     }
@@ -1756,7 +1581,7 @@ public class GameLauncherActivity extends Activity {
     private static String gamesDiskProblem(File f) {
         long len = f.length();
         if (len <= WIN98_GAMES_DISK_MIN) return "too small to be a Windows games disk";
-        if (len > WIN98_GAMES_DISK_MAX) return "too large for the Windows 98 IDE geometry";
+        if (len > WIN98_GAMES_DISK_MAX) return "too large for the Windows IDE geometry";
         return "not recognised as a usable Windows games disk";
     }
 
@@ -1994,7 +1819,7 @@ public class GameLauncherActivity extends Activity {
         if (isArchiveCdFile(f)) return false;
         String n = f.getName().toLowerCase(Locale.US);
         if (n.endsWith(".iso") || n.endsWith(".cue")) return true;
-        if (n.endsWith(".bin") || n.endsWith(".img")) return !hasSiblingCue(f);
+        if (n.endsWith(".bin") || n.endsWith(".img")) return !isCueReferencedTrack(f);
         return false;
     }
 
@@ -2092,13 +1917,14 @@ public class GameLauncherActivity extends Activity {
         }
     }
 
-    /** Long-press menu for a CD: install to MS-DOS games / insert into Win98 /
+    /** Long-press menu for a CD: install to MS-DOS games / insert into Windows 9x /
      *  delete. Only the actions that make sense are shown. */
     private void onCdLongPick(final File disc) {
-        final boolean win98Present = findBootFolder() != null;
+        final File boot = findBootFolder();
+        final boolean windowsPresent = boot != null;
         final List<String> menu = new ArrayList<>();
         menu.add("Install to MS-DOS games…");
-        if (win98Present) menu.add("Insert into Windows 98 boot");
+        if (windowsPresent) menu.add("Insert into " + windowsBootName(boot) + " boot");
         menu.add("Delete disc…");
         final String[] items = menu.toArray(new String[0]);
         new AlertDialog.Builder(this)
@@ -2106,16 +1932,16 @@ public class GameLauncherActivity extends Activity {
             .setItems(items, (d, w) -> {
                 String it = items[w];
                 if (it.startsWith("Install to MS-DOS")) installCdToMsdos(disc);
-                else if (it.startsWith("Insert into Windows 98")) insertCdForWin98(disc);
+                else if (it.startsWith("Insert into Windows")) insertCdForWin98(disc);
                 else if (it.startsWith("Delete disc")) confirmDeleteDisc(disc);
             })
             .show();
     }
 
-    /** Remember this disc as the CD to mount on the next Win98 boot. */
+    /** Remember this disc as the CD to mount on the next Windows 9x boot. */
     private void insertCdForWin98(final File disc) {
         mPendingBootDisc = disc;
-        Toast.makeText(this, discName(disc) + " will be in the Win98 drive on the next boot.",
+        Toast.makeText(this, discName(disc) + " will be in the Windows drive on the next boot.",
             Toast.LENGTH_LONG).show();
     }
 
@@ -2337,9 +2163,9 @@ public class GameLauncherActivity extends Activity {
                     rescan();
                     if (fWinVer >= 5) {
                         new AlertDialog.Builder(this)
-                            .setTitle("May not run in Windows 98")
+                            .setTitle("May not run in Windows 9x")
                             .setMessage("This CD's program needs Windows 2000/XP (build " + fWinVer
-                                + ".x) and probably won't run in the Windows 98 guest.")
+                                + ".x) and probably won't run in the Windows 95/98/ME guest.")
                             .setPositiveButton("OK", null)
                             .show();
                     }
@@ -2424,11 +2250,48 @@ public class GameLauncherActivity extends Activity {
 
     /** First OS-sized .img in the folder, or null. */
     private File findBootImage(File folder) {
-        File named = findNamed(folder, "windows98.img", 2);
+        File named = findNamed(folder, "windows95.img", 2);
+        if (named != null && named.length() >= BOOT_IMG_MIN) return named;
+        named = findNamed(folder, "win95.img", 2);
+        if (named != null && named.length() >= BOOT_IMG_MIN) return named;
+        named = findNamed(folder, "windowsme.img", 2);
+        if (named != null && named.length() >= BOOT_IMG_MIN) return named;
+        named = findNamed(folder, "winme.img", 2);
+        if (named != null && named.length() >= BOOT_IMG_MIN) return named;
+        named = findNamed(folder, "windows98.img", 2);
         if (named != null && named.length() >= BOOT_IMG_MIN) return named;
         named = findNamed(folder, "win98.img", 2);
         if (named != null && named.length() >= BOOT_IMG_MIN) return named;
         return findImgBySize(folder, 2, BOOT_IMG_MIN, Long.MAX_VALUE);
+    }
+
+    private String windowsBootName(File boot) {
+        String id = windowsBootId(boot);
+        if ("win95".equals(id)) return "Windows 95";
+        if ("win98".equals(id)) return "Windows 98";
+        if ("winme".equals(id)) return "Windows ME";
+        return "Windows 9x";
+    }
+
+    private String windowsTypeLabel(File boot) {
+        String id = windowsBootId(boot);
+        if ("win95".equals(id)) return "WIN95";
+        if ("win98".equals(id)) return "WIN98";
+        if ("winme".equals(id)) return "WINME";
+        return "WIN9X";
+    }
+
+    private String windowsBootId(File boot) {
+        String n = "";
+        if (boot != null) {
+            n += boot.getName().toLowerCase(Locale.US);
+            File img = findBootImage(boot);
+            if (img != null) n += " " + img.getName().toLowerCase(Locale.US);
+        }
+        if (n.contains("95")) return "win95";
+        if (n.contains("me") || n.contains("millennium")) return "winme";
+        if (n.contains("98")) return "win98";
+        return "win9x";
     }
 
     private File findImgBySize(File dir, int depth, long min, long max) {
@@ -2716,10 +2579,12 @@ public class GameLauncherActivity extends Activity {
                 "Screamer setup is speed-sensitive; using the slower compatibility profile.",
                 Toast.LENGTH_LONG).show();
         }
+        boolean voodoo = GameMeta.voodoo(this, gameName, defaultVoodoo(gameName, programName));
         writeAndLaunch(buildConf(lines, joy, machineFor(gameName, programName),
             cpuCoreFor(gameName, programName),
             cyclesFor(gameName, programName),
-            mixerFor(programName)), gameName);
+            mixerFor(programName),
+            voodoo), gameName);
     }
 
     /**
@@ -2737,6 +2602,7 @@ public class GameLauncherActivity extends Activity {
         // thread, so lower CPU cycles leave host headroom for the rasterizer
         // (150000 + Voodoo = audio underruns / jitter on the device).
         if (p.startsWith("s2_3dfx")) return "fixed 100000";
+        if (p.contains("3dfx") || p.contains("voodoo") || p.startsWith("whip3dfx")) return "fixed 100000";
         if (gameName.toLowerCase().contains("screamer")) return "fixed 150000";
         return "max";
     }
@@ -2769,7 +2635,15 @@ public class GameLauncherActivity extends Activity {
         if (p.startsWith("s2_3dfx")) {
             return "[mixer]\nnosound=false\nrate=44100\nblocksize=2048\nprebuffer=80\n\n";
         }
+        if (p.contains("3dfx") || p.contains("voodoo") || p.startsWith("whip3dfx")) {
+            return "[mixer]\nnosound=false\nrate=44100\nblocksize=2048\nprebuffer=80\n\n";
+        }
         return "[mixer]\nnosound=false\nrate=44100\nblocksize=1024\nprebuffer=25\n\n";
+    }
+
+    private static boolean defaultVoodoo(String gameName, String programName) {
+        String p = programName == null ? "" : programName.toLowerCase(Locale.US);
+        return p.contains("3dfx") || p.contains("voodoo") || p.startsWith("whip3dfx");
     }
 
     /** Append `cd \SUB` (if rel has a directory part) and the run line for rel. */
@@ -2818,9 +2692,10 @@ public class GameLauncherActivity extends Activity {
         }
         List<String> bats = new ArrayList<>();
         List<String> exes = new ArrayList<>();
+        boolean voodoo = GameMeta.voodoo(this, gameName, false);
         for (String p : programs) {
             String b = isoBaseName(p);
-            if (isFilteredName(b)) continue;
+            if (isFilteredName(b, voodoo)) continue;
             if (b.endsWith(".bat")) bats.add(p); else exes.add(p);
         }
         Collections.sort(bats, String.CASE_INSENSITIVE_ORDER);
@@ -2911,20 +2786,21 @@ public class GameLauncherActivity extends Activity {
         return false;
     }
 
-    /** Names that are never the game: emulator binaries, installers, 3dfx patches. */
-    private static boolean isFilteredName(String n) {
-        return n.startsWith("dosbox") || n.startsWith("setup") || n.startsWith("install")
-            || n.contains("3dfx") || n.contains("voodoo") || n.contains("glide");
+    /** Names that are never the game: emulator binaries, installers, optional 3dfx builds. */
+    private static boolean isFilteredName(String n, boolean allow3dfx) {
+        if (n.startsWith("dosbox") || n.startsWith("setup") || n.startsWith("install")) return true;
+        return !allow3dfx && (n.contains("3dfx") || n.contains("voodoo") || n.contains("glide"));
     }
 
-    /** Long-press menu — standardised across entry types: everything that can
-     *  pick a program gets "Pick program..." (game folders AND CD images, via
-     *  an ISO scan), every folder gets the CD changer (Insert/Eject), and all
-     *  entries get "Edit controls..." + the joystick-mode toggle. */
+    /** Row menu — standardised across entry types: everything that can pick a
+     *  program gets "Pick program..." (game folders AND CD images, via an ISO
+     *  scan), every folder gets the CD changer (Insert/Eject), and DOS control
+     *  mode is handled by the in-game overlay. */
     private void onLongPick(final File entry) {
         final String gameName = entry.getName();
-        final boolean stickMouse = KeyMapStore.loadStickMouseMode(this, gameName);
-        final String stickMouseItem = "Stick as mouse: " + (stickMouse ? "ON" : "OFF");
+        final String metaName = gameName(entry);
+        final boolean voodooMode = GameMeta.voodoo(this, metaName, false);
+        final String voodooItem = "3dfx/Voodoo: " + (voodooMode ? "ON" : "OFF");
         final boolean isFolder = entry.isDirectory();
         final File folder = entry;
         final String lower = gameName.toLowerCase();
@@ -2959,22 +2835,16 @@ public class GameLauncherActivity extends Activity {
             if (disks.isEmpty()) menu.add(badDisk != null ? "Repair games disk (D:)..." : "Create games disk (D:)...");
             else menu.add("Copy game from D: to MS-DOS...");
         }
-        // Per-game type (DOS / Windows 98) + CD (rip / needs CD) assignment.
-        final String metaName = gameName(entry);
+        // Per-game type (DOS / Windows 9x) + CD (rip / needs CD) assignment.
         final String autoPlat = (isCdImage && !isDosDisc(entry)) ? GameMeta.WIN98 : GameMeta.DOS;
         final String plat = GameMeta.platform(this, metaName, autoPlat);
         final boolean needsCd = GameMeta.needsCd(this, metaName, defaultNeedsCd(entry, plat));
         if (!bootable) {
-            menu.add(plat.equals(GameMeta.WIN98) ? "Set type → MS-DOS" : "Set type → Windows 98");
+            menu.add(plat.equals(GameMeta.WIN98) ? "Set type → MS-DOS" : "Set type → Windows 9x");
             menu.add(needsCd ? "CD: needs disc (tap = mark as rip)" : "CD: rip / no disc (tap = needs CD)");
             if (isFolder && needsCd) menu.add("Choose CD...");
         }
-        // Button/key mapping is for DOS games; booted Windows gets the guest
-        // joystick/mouse path instead.
-        if (!bootable) {
-            menu.add("Configure controls...");
-            menu.add(stickMouseItem);
-        }
+        if (!bootable) menu.add(voodooItem);
         if (!bootable) menu.add(isFolder ? "Delete game..." : "Delete disc...");
         final String[] items = menu.toArray(new String[0]);
         new AlertDialog.Builder(this)
@@ -3023,13 +2893,13 @@ public class GameLauncherActivity extends Activity {
                         rescan();
                     });
                 }
-                else if (it.startsWith("Configure controls")) showControlMapper(gameName);
-                else if (it.startsWith("Stick as mouse")) {
-                    KeyMapStore.saveStickMouseMode(this, gameName, !stickMouse);
-                    Toast.makeText(this, !stickMouse
-                        ? "Left stick now moves the DOS mouse."
-                        : "Left stick now sends keyboard directions again.",
+                else if (it.startsWith("3dfx/Voodoo")) {
+                    GameMeta.setVoodoo(this, metaName, !voodooMode);
+                    Toast.makeText(this, !voodooMode
+                        ? "3dfx/Voodoo enabled for this game."
+                        : "3dfx/Voodoo disabled for this game.",
                         Toast.LENGTH_LONG).show();
+                    rescan();
                 }
                 else if (it.startsWith("Delete game"))   confirmDeleteGame(folder);
                 else if (it.startsWith("Delete disc"))   confirmDeleteDisc(entry);
@@ -3074,7 +2944,7 @@ public class GameLauncherActivity extends Activity {
     private void copyCdMediaToWindowsDrive(final File media, final File boot) {
         final File bootFolder = boot != null ? boot : findBootFolder();
         if (bootFolder == null) {
-            Toast.makeText(this, "No Windows 98 image found in the games folder.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No Windows 95/98/ME image found in the games folder.", Toast.LENGTH_LONG).show();
             return;
         }
         File disk = firstGamesDisk(bootFolder);
@@ -3298,6 +3168,34 @@ public class GameLauncherActivity extends Activity {
             || new File(img.getParentFile(), base + ".CUE").isFile();
     }
 
+    /** True when this data/audio track belongs to a .cue in the same folder. */
+    private static boolean isCueReferencedTrack(File track) {
+        if (track == null || track.isDirectory()) return false;
+        String n = track.getName().toLowerCase(Locale.US);
+        if (!n.endsWith(".bin") && !n.endsWith(".img")) return false;
+        if (hasSiblingCue(track)) return true;
+        File dir = track.getParentFile();
+        File[] kids = dir != null ? dir.listFiles() : null;
+        if (kids == null) return false;
+        String target = track.getName().toLowerCase(Locale.US);
+        for (File f : kids) {
+            if (f == null || f.isDirectory()) continue;
+            if (!f.getName().toLowerCase(Locale.US).endsWith(".cue")) continue;
+            for (String dataName : cueDataNames(f)) {
+                if (cueDataBaseName(dataName).equals(target)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static String cueDataBaseName(String name) {
+        if (name == null) return "";
+        String n = name.replace('\\', '/');
+        int slash = n.lastIndexOf('/');
+        if (slash >= 0) n = n.substring(slash + 1);
+        return n.toLowerCase(Locale.US);
+    }
+
     /** Browse the CD library (and any loose discs in the games dir) for CD
      *  images (or archives, which are unpacked into mountable media) and put one
      *  into the game's changer folder. */
@@ -3506,12 +3404,11 @@ public class GameLauncherActivity extends Activity {
             if (f.isDirectory()) {
                 if (depth > 0) collectCdsInner(f, depth - 1, out);
             } else {
-                String n = f.getName().toLowerCase();
-                // Plain .iso / .cue are the common cases; .bin is also
-                // accepted and auto-wrapped with a generated .cue at mount
-                // time (see ensureCueForBin).
-                if (n.endsWith(".iso") || n.endsWith(".cue")
-                        || ((n.endsWith(".bin") || n.endsWith(".img")) && !hasSiblingCue(f))) {
+                // Plain .iso / .cue are the common cases; standalone .bin
+                // and .img files are also accepted and auto-wrapped with a
+                // generated .cue at mount time. Tracks referenced by an
+                // existing .cue are hidden so they do not appear as separate CDs.
+                if (isCdMediaListFile(f)) {
                     out.add(f);
                 }
             }
@@ -3833,11 +3730,15 @@ public class GameLauncherActivity extends Activity {
 
     /** Resolve the launcher for a game folder per the auto-pick rules. */
     private File autoPickLauncher(File folder) {
+        String folderName = folder.getName().toLowerCase(Locale.US);
+        boolean fatalRacing = folderName.contains("whiplash") || folderName.contains("fatal");
+        boolean voodoo = GameMeta.voodoo(this, folder.getName(), false);
         // User picked this launcher at import time — honour it.
         File stored = readSidecarLaunch(folder);
         if (stored != null && stored.isFile()) {
-            String g = folder.getName().toLowerCase(Locale.US);
-            if (!(g.contains("bubble") && g.contains("rainbow")
+            String storedName = stored.getName().toLowerCase(Locale.US);
+            boolean canOverride = fatalRacing && voodoo && !storedName.contains("3dfx");
+            if (!canOverride && !(folderName.contains("bubble") && folderName.contains("rainbow")
                     && stored.getName().equalsIgnoreCase("bubble.bat"))) {
                 return stored;
             }
@@ -3847,7 +3748,7 @@ public class GameLauncherActivity extends Activity {
         // 3dfx build is the best pick (verified rendering on this core);
         // START65H.EXE is the SVGA fallback if it's missing or too slow —
         // long-press → "Pick program..." switches builds.
-        if (folder.getName().toLowerCase().contains("screamer")) {
+        if (folderName.contains("screamer")) {
             File s23dfx = findNamed(folder, "s2_3dfx.exe", 3);
             if (s23dfx != null) return s23dfx;
             File start65h = findNamed(folder, "start65h.exe", 3);
@@ -3862,10 +3763,13 @@ public class GameLauncherActivity extends Activity {
         }
 
         // Whiplash / Fatal Racing ships both a 3dfx build (whip3dfx.exe) and
-        // the original (fatal.exe). 3dfx is broken on this build, so prefer
-        // fatal.exe. Also: never pick `dosbox-x.exe` or `setup.exe` — those
-        // are the emulator binary and the installer respectively.
-        if (folder.getName().toLowerCase().contains("whiplash")) {
+        // the original (fatal.exe). Prefer the 3dfx build only when the user
+        // enables the per-game Voodoo option.
+        if (fatalRacing) {
+            if (voodoo) {
+                File whip3dfx = findNamed(folder, "whip3dfx.exe", 4);
+                if (whip3dfx != null) return whip3dfx;
+            }
             File fatal = findNamed(folder, "fatal.exe", 4);
             if (fatal != null) return fatal;
         }
@@ -3881,10 +3785,11 @@ public class GameLauncherActivity extends Activity {
         }
 
         List<File> launchers = findLaunchers(folder, 3);
-        // Filter out emulator binaries, installers, and 3dfx patches.
+        // Filter out emulator binaries and installers; 3dfx launchers are
+        // shown only when the per-game Voodoo option is enabled.
         List<File> filtered = new ArrayList<>();
         for (File f : launchers) {
-            if (isFilteredName(f.getName().toLowerCase())) continue;
+            if (isFilteredName(f.getName().toLowerCase(), GameMeta.voodoo(this, folder.getName(), false))) continue;
             filtered.add(f);
         }
         if (filtered.isEmpty()) filtered = launchers;  // fallback: take anything we have
@@ -3901,7 +3806,8 @@ public class GameLauncherActivity extends Activity {
         if (g.contains("screamer") || g.contains("whiplash")) return false;
         List<File> launchers = findLaunchers(folder, 3);
         List<File> filtered = new ArrayList<>();
-        for (File f : launchers) if (!isFilteredName(f.getName().toLowerCase())) filtered.add(f);
+        boolean voodoo = GameMeta.voodoo(this, folder.getName(), false);
+        for (File f : launchers) if (!isFilteredName(f.getName().toLowerCase(), voodoo)) filtered.add(f);
         if (filtered.isEmpty()) filtered = launchers;
         return filtered.size() > 1;
     }
@@ -4151,7 +4057,8 @@ public class GameLauncherActivity extends Activity {
     }
 
     private String buildConf(List<String> autoexec, boolean joystick, String machine,
-                             String cpuCore, String cycles, String mixer) {
+                             String cpuCore, String cycles, String mixer,
+                             boolean voodoo) {
         StringBuilder sb = new StringBuilder();
         /* Android: stay windowed (the GPU fill-path runs only in the windowed
          * branch and scales to the full native display). Hide the DOSBox menu
@@ -4169,19 +4076,13 @@ public class GameLauncherActivity extends Activity {
         // sbpro2 (8-bit DMA) plays digital SFX reliably in DOSBox where sb16's
         // 16-bit DMA often goes silent for DOS games.
         sb.append("[sblaster]\nsbtype=sbpro2\nsbbase=220\nirq=7\ndma=1\noplmode=auto\n\n");
-        // 3dfx Voodoo via the CPU rasterizer — the GL backend needs desktop
-        // OpenGL, which Android lacks; software is what the core supports here
-        // (verified: Screamer 2's S2_3DFX.EXE renders correctly with this).
-        sb.append("[voodoo]\nvoodoo_card=software\n\n");
-        if (joystick) {
-            // Joystick mode: the gamepad flows through SDL to the DOS gameport.
-            // 2axis = the classic 2-axis/2-button stick DOS-era setups expect;
-            // timed=false gives stable axis readings (easier calibration).
-            sb.append("[joystick]\njoysticktype=2axis\ntimed=false\njoy1deadzone1=0.35\njoy1deadzone2=0.35\n\n");
-        } else {
-            // gamepad is mapped to keys in SDLActivity; no DOS joystick / no calibration prompt
-            sb.append("[joystick]\njoysticktype=none\n\n");
-        }
+        // 3dfx Voodoo via the CPU rasterizer. Leave it off unless a game is
+        // tagged for 3dfx because the software rasterizer costs host CPU.
+        sb.append("[voodoo]\nvoodoo_card=").append(voodoo ? "software" : "false").append("\n\n");
+        // Always expose the DOS joystick device. SDLActivity decides at
+        // runtime whether Android gamepad events reach it (JOY mode) or are
+        // translated to keyboard keys (KEY mode).
+        sb.append("[joystick]\njoysticktype=2axis\ntimed=false\njoy1deadzone1=0.35\njoy1deadzone2=0.35\n\n");
         sb.append("[autoexec]\n@echo off\n");
         for (String l : autoexec) sb.append(l).append("\n");
         return sb.toString();

@@ -10,7 +10,7 @@ import java.io.RandomAccessFile;
 
 /**
  * Per-game metadata for the unified Games list: which platform a game is
- * assigned to (DOS or Windows 98) and whether it needs its CD inserted to run
+ * assigned to (DOS or Windows 9x) and whether it needs its CD inserted to run
  * (copy protection / CD audio) vs being a no-CD "rip". Stored as one small
  * JSON file per game name, alongside the keymaps.
  *
@@ -32,6 +32,11 @@ final class GameMeta {
         return o != null ? o.optBoolean("needsCd", dflt) : dflt;
     }
 
+    static boolean voodoo(Context c, String name, boolean dflt) {
+        JSONObject o = read(c, name);
+        return o != null ? o.optBoolean("voodoo", dflt) : dflt;
+    }
+
     static String cdMedia(Context c, String name) {
         JSONObject o = read(c, name);
         String v = o != null ? o.optString("cdMedia", null) : null;
@@ -40,6 +45,7 @@ final class GameMeta {
 
     static void setPlatform(Context c, String name, String p) { put(c, name, "platform", p); }
     static void setNeedsCd(Context c, String name, boolean b) { put(c, name, "needsCd", b); }
+    static void setVoodoo(Context c, String name, boolean b) { put(c, name, "voodoo", b); }
     static void setCdMedia(Context c, String name, String mediaName) { put(c, name, "cdMedia", mediaName); }
 
     /** Drop a game's metadata (e.g. when it's deleted). */
