@@ -20,7 +20,20 @@ import java.io.RandomAccessFile;
 final class GameMeta {
 
     static final String DOS = "dos";
+    static final String WIN95 = "win95";
     static final String WIN98 = "win98";
+
+    /** True for any Windows 9x platform (95 or 98). */
+    static boolean isWindows(String plat) {
+        return WIN95.equals(plat) || WIN98.equals(plat);
+    }
+
+    /** Short column label for a platform id. */
+    static String platLabel(String plat) {
+        if (WIN95.equals(plat)) return "WIN95";
+        if (WIN98.equals(plat)) return "WIN98";
+        return "DOS";
+    }
 
     static String platform(Context c, String name, String dflt) {
         JSONObject o = read(c, name);

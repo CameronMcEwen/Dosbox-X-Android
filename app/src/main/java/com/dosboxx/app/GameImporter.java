@@ -39,6 +39,9 @@ import java.util.Locale;
 final class GameImporter {
 
     /** What the picked archive is destined to become. */
+    /** Pre-selected platform for the next REQ_PICK_RIP_GAME (0=ask, 1=DOS, 2=Win). */
+    public static int sAddPlatform = 0;
+
     public static final int KIND_DOS_GAME      = 0;
     public static final int KIND_DOS_CD        = 1;
     public static final int KIND_DOS_CD_SETUP  = 2;
@@ -102,24 +105,29 @@ final class GameImporter {
                     Toast.LENGTH_LONG).show();
                 return;
             }
-            promptPlatform(a, "Add CD game", base,
-                () -> importSafUri(a, host, uri, base, ext, KIND_DOS_CD_SETUP),
-                () -> importSafUri(a, host, uri, base, ext, KIND_WIN98_MEDIA));
+            // Just add the CD to the library — never boot. The user attaches it
+            // to a DOS or Windows game (picking the platform) from the game row,
+            // then presses ▶ to play.
+            importSafUri(a, host, uri, base, ext, KIND_DOS_CD);
             return;
         }
 
         if (requestCode == REQ_PICK_RIP_GAME) {
-            promptPlatform(a, "Add rip game", base,
-                () -> importSafUri(a, host, uri, base, ext, KIND_DOS_GAME),
-                () -> {
-                    if (!ext.equalsIgnoreCase("zip")) {
-                        Toast.makeText(a,
-                            "Windows 98 rip import needs a .zip so it can be mounted as a CD.",
-                            Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    importSafUri(a, host, uri, base, ext, KIND_WIN98_MEDIA);
-                });
+            final Runnable dos = () -> importSafUri(a, host, uri, base, ext, KIND_DOS_GAME);
+            final Runnable win = () -> {
+                if (!ext.equalsIgnoreCase("zip")) {
+                    Toast.makeText(a,
+                        "Windows 98 rip import needs a .zip so it can be mounted as a CD.",
+                        Toast.LENGTH_LONG).show();
+                    return;
+                }
+                importSafUri(a, host, uri, base, ext, KIND_WIN98_MEDIA);
+            };
+            // A section's "+ Add game" pre-selects the platform; otherwise ask.
+            int plat = sAddPlatform; sAddPlatform = 0;
+            if (plat == 1)      dos.run();
+            else if (plat == 2) win.run();
+            else                promptPlatform(a, "Add rip game", base, dos, win);
             return;
         }
 
@@ -218,8 +226,8 @@ final class GameImporter {
                     return;
                 }
                 if (archiveMedia && kind == KIND_DOS_CD) {
-                    Toast.makeText(a, base + " added to the CD collection.", Toast.LENGTH_LONG).show();
-                    host.rescan();
+                    // Extract the ZIP into the library once, then delete the ZIP.
+                    host.importZipToLibraryAndDelete(fDest);
                 } else if (kind == KIND_DOS_CD) {
                     Toast.makeText(a, base + " added to the CD library.", Toast.LENGTH_LONG).show();
                     host.rescan();

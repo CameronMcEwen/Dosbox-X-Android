@@ -32,6 +32,7 @@ public final class KeyMapStore {
     public static final String[] BUTTONS = {
         "A", "B", "X", "Y",
         "L1", "R1",
+        "L2", "R2",
         "START", "SELECT",
         "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT", "DPAD_CENTER"
     };
@@ -81,6 +82,8 @@ public final class KeyMapStore {
         m.put("Y",           KeyEvent.KEYCODE_TAB);
         m.put("L1",          KeyEvent.KEYCODE_SHIFT_LEFT);
         m.put("R1",          KeyEvent.KEYCODE_CTRL_LEFT);
+        m.put("L2",          KeyEvent.KEYCODE_ALT_LEFT);
+        m.put("R2",          KeyEvent.KEYCODE_SPACE);
         m.put("START",       KeyEvent.KEYCODE_ENTER);
         m.put("SELECT",      KeyEvent.KEYCODE_ESCAPE);
         m.put("DPAD_UP",     KeyEvent.KEYCODE_DPAD_UP);

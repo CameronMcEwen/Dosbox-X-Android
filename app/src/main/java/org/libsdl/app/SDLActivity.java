@@ -654,9 +654,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     private android.widget.LinearLayout mDosCursorPanel;
     // Keys are weight-sized so every row stretches edge-to-edge across the
     // device; compact heights + translucency keep the game visible behind.
-    private int mDosKeyH = 60;
-    private float mDosKeyTextSp = 18f;
-    private int mDosKeyBg = 0xD8383838;
+    private int mDosKeyH = 42;          // smaller keys
+    private float mDosKeyTextSp = 13f;
+    private int mDosKeyBg = 0x99383838; // more see-through
 
     /** Build a small toggle button + a full PC keyboard laid out like the
      * real thing (staggered rows, wide Backspace/Enter/Shift/Space) that
@@ -675,7 +675,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         // responsive when the panel is in its new position.
         mDosKeyPanel = new android.widget.LinearLayout(this);
         mDosKeyPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
-        mDosKeyPanel.setBackgroundColor(0x90202020);
+        mDosKeyPanel.setBackgroundColor(0x55202020);   // more see-through
         mDosKeyPanel.setVisibility(View.GONE);
 
         // Thin drag-handle bar above the keys. The bar itself is the grab
@@ -757,9 +757,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         // the user has dragged it). The drag handler removes the
         // ALIGN_PARENT_BOTTOM rule on first move and switches to explicit
         // leftMargin/topMargin from then on.
+        // Smaller + horizontally centered (about 70% width); still draggable.
+        int kbW = (int)(getResources().getDisplayMetrics().widthPixels * 0.70f);
         RelativeLayout.LayoutParams plp = new RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+            kbW, RelativeLayout.LayoutParams.WRAP_CONTENT);
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        plp.addRule(RelativeLayout.CENTER_HORIZONTAL);
         mLayout.addView(mDosKeyPanel, plp);
 
         buildCursorPad(d);
@@ -787,34 +790,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mLayout.addView(toggle, tlp);
         mOverlayButtons.add(toggle);
 
-        // Per-game gamepad mode. Tap switches between keyboard mapping and a
-        // real DOS joystick; long-press edits the keyboard mapping for KEY mode.
-        final android.widget.Button padMode = new android.widget.Button(this);
-        updatePadModeButton(padMode);
-        padMode.setTextColor(0xFFFFFFFF);
-        padMode.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10);
-        padMode.setAllCaps(false);
-        padMode.setBackgroundColor(0xA0303030);
-        padMode.setPadding(pad, pad, pad, pad);
-        RelativeLayout.LayoutParams jlp = new RelativeLayout.LayoutParams(
-            (int)(58*d), (int)(40*d));
-        jlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        jlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
-        jlp.leftMargin = (int)(52*d);
-        padMode.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                togglePadMode(padMode);
-            }
-        });
-        padMode.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                showGamepadMapper();
-                showOverlayButtons();
-                return true;
-            }
-        });
-        mLayout.addView(padMode, jlp);
-        mOverlayButtons.add(padMode);
+        // (KEY/JOY toggle removed — the pad is always in hybrid mode. Control
+        // mapping is available from the MAP tool button.)
 
         // Disc picker (2+ discs mounted): the swap set is fixed at boot, but
         // any disc in it can be put in the drive by name. Top-right, left of ✕.
@@ -880,7 +857,72 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mLayout.addView(exitBtn, xb);
         mOverlayButtons.add(exitBtn);
 
+        // DOSBox-X tool shortcuts (top-centre row): fullscreen toggle, the
+        // Configuration Tool, the Mapper Editor, and emulation speed up/down.
+        // These are the host-key (F12) combos shown on the welcome screen.
+        buildDosToolsRow(d, pad);
+
         showOverlayButtons();   // visible on launch, then auto-hide after 2s
+    }
+
+    /** Send a DOSBox-X host-key shortcut: F12 held + the given key, then release.
+     *  (F12 is DOSBox-X's default mapper "host" key.) */
+    private void pressHostCombo(final int keycode) {
+        onNativeKeyDown(KeyEvent.KEYCODE_F12);
+        onNativeKeyDown(keycode);
+        onNativeKeyUp(keycode);
+        onNativeKeyUp(KeyEvent.KEYCODE_F12);
+    }
+
+    /** Build the top-centre row of DOSBox-X tool buttons (part of the auto-hiding
+     *  overlay). Labels double as icons. Most fire an F12 host combo; MAP opens
+     *  the Android touch mapper instead (DOSBox-X's own Mapper Editor is a
+     *  mouse/keyboard grid that's unusable on a touchscreen). */
+    private void buildDosToolsRow(float d, int pad) {
+        android.widget.LinearLayout tools = new android.widget.LinearLayout(this);
+        tools.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+
+        final String[] labels = { "⛶",                  "CFG",                 "MAP",            "spd+",                 "spd−" };
+        final String[] toasts = { "Window / fullscreen", "Configuration Tool",  "Controls",       "Emulation speed +",     "Emulation speed −" };
+        // host-combo keycode for each button, or 0 for "use the custom action below"
+        final int[]    combos = { KeyEvent.KEYCODE_F,    KeyEvent.KEYCODE_C,    0,                KeyEvent.KEYCODE_EQUALS, KeyEvent.KEYCODE_MINUS };
+
+        for (int i = 0; i < labels.length; i++) {
+            final int combo = combos[i];
+            final String toast = toasts[i];
+            android.widget.Button b = new android.widget.Button(this);
+            b.setText(labels[i]);
+            b.setTextColor(0xFFFFFFFF);
+            b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11);
+            b.setAllCaps(false);
+            b.setBackgroundColor(0xA0303030);
+            b.setPadding(pad, pad, pad, pad);
+            android.widget.LinearLayout.LayoutParams blp =
+                new android.widget.LinearLayout.LayoutParams((int)(52*d), (int)(40*d));
+            blp.leftMargin = (int)(3*d);
+            b.setLayoutParams(blp);
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (combo == 0) {
+                        // MAP -> Android touch control mapper (not the DOSBox grid)
+                        showGamepadMapper();
+                    } else {
+                        pressHostCombo(combo);
+                        android.widget.Toast.makeText(SDLActivity.this, toast, android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                    showOverlayButtons();   // keep the overlay visible after use
+                }
+            });
+            tools.addView(b);
+            mOverlayButtons.add(b);
+        }
+
+        RelativeLayout.LayoutParams rlp = new RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+        rlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        rlp.addRule(RelativeLayout.CENTER_HORIZONTAL);
+        mLayout.addView(tools, rlp);
+        mOverlayButtons.add(tools);
     }
 
     private void updatePadModeButton(android.widget.Button b) {
@@ -889,8 +931,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     private void togglePadMode(android.widget.Button b) {
         boolean next = !sJoystickMode;
-        if (next) releaseStickKeys();
+        releaseStickKeys();
         setJoystickMode(next);
+        if (!next) SDLControllerManager.resetJoystickState();
         if (mDosBoxGameName != null && !mDosBoxGameName.isEmpty()) {
             com.dosboxx.app.KeyMapStore.saveJoystickMode(this, mDosBoxGameName, next);
         }
@@ -1482,23 +1525,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         // B=jump, X=use, Y=run, L1/R1=fire/jump, Dpad=arrows.
         // In per-game joystick mode the pad is NOT translated — events fall
         // through to SDL's controller path and reach DOS as a real joystick.
-        if (!sJoystickMode) {
-            int mapped = SDLActivity.mapGamepadButtonToKey(keyCode);
-            if (mapped != 0) {
-                int action = event.getAction();
-                if (isMouseTarget(mapped)) {
-                    int mouseButton = mapped == com.dosboxx.app.KeyMapStore.TARGET_MOUSE_RIGHT ? 3 : 1;
-                    if (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP) {
-                        SDLActivity.onNativeMouse(mouseButton, action, 0, 0, true);
-                    }
-                } else if (action == KeyEvent.ACTION_DOWN) {
-                    SDLActivity.onNativeKeyDown(mapped);
-                } else if (action == KeyEvent.ACTION_UP) {
-                    SDLActivity.onNativeKeyUp(mapped);
-                }
-                return true;
-            }
-        }
+        if (!sJoystickMode && routeGamepadKeyToKeyboard(keyCode, event)) return true;
+        // Hybrid: even with the analog joystick enabled, the d-pad and
+        // Start/Select/triggers still act as keyboard keys (d-pad = arrows,
+        // Start = Enter, etc.). Only the stick + face buttons reach SDL as the
+        // real joystick.
+        if (sJoystickMode && isKeyboardInJoyMode(keyCode)
+                && routeGamepadKeyToKeyboard(keyCode, event)) return true;
 
         // DosBoxX: BACK button -> Escape (menu "back"). The on-screen keyboard is
         // toggled with the on-screen keyboard button instead.
@@ -1535,37 +1568,99 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     @Override
     public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
-        if (!sJoystickMode
-                && (event.getSource() & InputDevice.SOURCE_JOYSTICK) != 0
+        if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != 0
                 && event.getAction() == android.view.MotionEvent.ACTION_MOVE) {
-            float lx = event.getAxisValue(android.view.MotionEvent.AXIS_X);
-            float ly = event.getAxisValue(android.view.MotionEvent.AXIS_Y);
-            // fold in the right stick for turning (X) so either stick can aim
-            float rx = event.getAxisValue(android.view.MotionEvent.AXIS_Z);
-            if (Math.abs(rx) > Math.abs(lx)) lx = rx;
-            if (sStickMouseMode) {
-                final float dz = 0.16f;
-                float mx = Math.abs(lx) > dz ? lx * 18f : 0f;
-                float my = Math.abs(ly) > dz ? ly * 18f : 0f;
-                if (mx != 0f || my != 0f) SDLActivity.onNativeMouse(0, android.view.MotionEvent.ACTION_MOVE, mx, my, true);
-                releaseStickKeys();
-                return true;
+            if (!sJoystickMode) {
+                return mapJoystickMotionToKeyboard(event);
             }
-            final float dz = 0.35f;
-            boolean[] want = new boolean[4];
-            want[0] = ly < -dz;   // up    -> forward
-            want[1] = ly >  dz;   // down  -> back
-            want[2] = lx < -dz;   // left  -> turn left
-            want[3] = lx >  dz;   // right -> turn right
-            for (int i = 0; i < 4; i++) {
-                int kc = stickKeyFor(STICK_BUTTONS[i], STICK_FALLBACKS[i]);
-                if (isMouseTarget(kc)) continue;
-                if (want[i] && !mStickKeyDown[i])      { onNativeKeyDown(kc); mStickKeyDown[i] = true; }
-                else if (!want[i] && mStickKeyDown[i]) { onNativeKeyUp(kc);   mStickKeyDown[i] = false; }
-            }
-            return true;
+            // Hybrid joystick mode: the right stick still drives the mouse and the
+            // d-pad hat still sends arrow keys; the left stick passes through to
+            // SDL as the real analog joystick.
+            mapHybridMotion(event);
         }
         return super.dispatchGenericMotionEvent(event);
+    }
+
+    /** Buttons that stay keyboard keys even when the analog joystick is enabled:
+     *  the d-pad (cursor/arrows), Start/Select, and the triggers. The face
+     *  buttons and sticks go to SDL as the real joystick. */
+    private static boolean isKeyboardInJoyMode(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:    case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_LEFT:  case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_BUTTON_START: case KeyEvent.KEYCODE_BUTTON_SELECT:
+            case KeyEvent.KEYCODE_BUTTON_L2:    case KeyEvent.KEYCODE_BUTTON_R2:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** Right stick -> mouse; d-pad hat -> arrow keys. Additive (does not consume
+     *  the event) so the left stick still reaches SDL as the analog joystick. */
+    private void mapHybridMotion(android.view.MotionEvent event) {
+        float rx = event.getAxisValue(android.view.MotionEvent.AXIS_Z);
+        float ry = event.getAxisValue(android.view.MotionEvent.AXIS_RZ);
+        final float mdz = 0.16f;
+        float mx = Math.abs(rx) > mdz ? rx * 18f : 0f;
+        float my = Math.abs(ry) > mdz ? ry * 18f : 0f;
+        if (mx != 0f || my != 0f)
+            SDLActivity.onNativeMouse(0, android.view.MotionEvent.ACTION_MOVE, mx, my, true);
+
+        float hx = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_X);
+        float hy = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y);
+        boolean[] want = { hy < -0.5f, hy > 0.5f, hx < -0.5f, hx > 0.5f };
+        for (int i = 0; i < 4; i++) {
+            int kc = STICK_FALLBACKS[i];   // arrow keys
+            if (want[i] && !mStickKeyDown[i])      { onNativeKeyDown(kc); mStickKeyDown[i] = true; }
+            else if (!want[i] && mStickKeyDown[i]) { onNativeKeyUp(kc);   mStickKeyDown[i] = false; }
+        }
+    }
+
+    public static boolean handleJoystickMotionAsKeyboard(android.view.MotionEvent event) {
+        return mSingleton != null && mSingleton.mapJoystickMotionToKeyboard(event);
+    }
+
+    private boolean mapJoystickMotionToKeyboard(android.view.MotionEvent event) {
+        float lx = event.getAxisValue(android.view.MotionEvent.AXIS_X);
+        float ly = event.getAxisValue(android.view.MotionEvent.AXIS_Y);
+        // Right stick -> mouse (dedicated). Android reports it on Z (horizontal)
+        // and RZ (vertical) for most pads.
+        float rx = event.getAxisValue(android.view.MotionEvent.AXIS_Z);
+        float ry = event.getAxisValue(android.view.MotionEvent.AXIS_RZ);
+        final float mdz = 0.16f;
+        float rmx = Math.abs(rx) > mdz ? rx * 18f : 0f;
+        float rmy = Math.abs(ry) > mdz ? ry * 18f : 0f;
+        if (rmx != 0f || rmy != 0f)
+            SDLActivity.onNativeMouse(0, android.view.MotionEvent.ACTION_MOVE, rmx, rmy, true);
+
+        // D-pad arrives as a hat on many pads — route it to the arrow keys too.
+        float hx = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_X);
+        float hy = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y);
+
+        if (sStickMouseMode) {
+            // Whole-pad "stick = mouse": left stick also drives the mouse.
+            float mx = Math.abs(lx) > mdz ? lx * 18f : 0f;
+            float my = Math.abs(ly) > mdz ? ly * 18f : 0f;
+            if (mx != 0f || my != 0f) SDLActivity.onNativeMouse(0, android.view.MotionEvent.ACTION_MOVE, mx, my, true);
+            releaseStickKeys();
+            return true;
+        }
+        // Left stick (and the d-pad hat) -> arrow-key movement.
+        final float dz = 0.35f;
+        boolean[] want = new boolean[4];
+        want[0] = ly < -dz || hy < -0.5f;   // up    -> forward
+        want[1] = ly >  dz || hy >  0.5f;   // down  -> back
+        want[2] = lx < -dz || hx < -0.5f;   // left  -> turn left
+        want[3] = lx >  dz || hx >  0.5f;   // right -> turn right
+        for (int i = 0; i < 4; i++) {
+            int kc = stickKeyFor(STICK_BUTTONS[i], STICK_FALLBACKS[i]);
+            if (isMouseTarget(kc)) continue;
+            if (want[i] && !mStickKeyDown[i])      { onNativeKeyDown(kc); mStickKeyDown[i] = true; }
+            else if (!want[i] && mStickKeyDown[i]) { onNativeKeyUp(kc);   mStickKeyDown[i] = false; }
+        }
+        return true;
     }
 
     private void releaseStickKeys() {
@@ -1608,6 +1703,26 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         }
     }
 
+    private static boolean routeGamepadKeyToKeyboard(int keyCode, KeyEvent event) {
+        if (!SDLControllerManager.isDeviceSDLJoystick(event.getDeviceId())) return false;
+        int mapped = SDLActivity.mapGamepadButtonToKey(keyCode);
+        int action = event.getAction();
+        if (mapped != 0) {
+            if (isMouseTarget(mapped)) {
+                int mouseButton = mapped == com.dosboxx.app.KeyMapStore.TARGET_MOUSE_RIGHT ? 3 : 1;
+                if (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP) {
+                    SDLActivity.onNativeMouse(mouseButton, action, 0, 0, true);
+                }
+            } else if (action == KeyEvent.ACTION_DOWN) {
+                SDLActivity.onNativeKeyDown(mapped);
+            } else if (action == KeyEvent.ACTION_UP) {
+                SDLActivity.onNativeKeyUp(mapped);
+            }
+        }
+        // In KEY mode, never let gamepad buttons reach SDL as joystick buttons.
+        return true;
+    }
+
     /** GameLauncherActivity calls this before launching SDLActivity so the
      *  mapping honors the user's per-game keymap. The map is keyed by the
      *  canonical button names from com.dosboxx.app.KeyMapStore.BUTTONS. */
@@ -1619,11 +1734,15 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      *  keyboard keys — buttons and sticks flow through SDL's controller path
      *  and reach DOS as a real gameport joystick (joysticktype=auto in the
      *  conf). Set by GameLauncherActivity before each launch. */
-    public static boolean sJoystickMode = false;
+    // Always-on hybrid: the left stick + face buttons reach DOS as the real
+    // analog joystick, while the d-pad/Start/Select/triggers stay keyboard keys
+    // and the right stick drives the mouse. There is no KEY/JOY toggle.
+    public static boolean sJoystickMode = true;
     public static boolean sStickMouseMode = false;
 
     public static void setJoystickMode(boolean on) {
-        sJoystickMode = on;
+        // Hybrid is always on; ignore per-game toggles.
+        sJoystickMode = true;
     }
 
     public static void setStickMouseMode(boolean on) {
@@ -1711,6 +1830,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             case KeyEvent.KEYCODE_BUTTON_Y:      return "Y";
             case KeyEvent.KEYCODE_BUTTON_L1:     return "L1";
             case KeyEvent.KEYCODE_BUTTON_R1:     return "R1";
+            case KeyEvent.KEYCODE_BUTTON_L2:     return "L2";
+            case KeyEvent.KEYCODE_BUTTON_R2:     return "R2";
             case KeyEvent.KEYCODE_BUTTON_START:  return "START";
             case KeyEvent.KEYCODE_BUTTON_SELECT: return "SELECT";
             case KeyEvent.KEYCODE_DPAD_UP:       return "DPAD_UP";
@@ -2397,6 +2518,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         // SOURCE_JOYSTICK, while its key events arrive from the keyboard source
         // So, retrieve the device itself and check all of its sources
         if (SDLControllerManager.isDeviceSDLJoystick(deviceId)) {
+            if (!sJoystickMode) return routeGamepadKeyToKeyboard(keyCode, event);
             // Note that we process events with specific key codes here
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (SDLControllerManager.onNativePadDown(deviceId, keyCode) == 0) {
