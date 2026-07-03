@@ -19,8 +19,7 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:theme="@style/AppTheme"
-        android:hardwareAccelerated="true"
-        android:extractNativeLibs="true">
+        android:hardwareAccelerated="true">
 
         <!-- In-app game launcher / config generator is the entry point. -->
         <activity
@@ -28,6 +27,7 @@
             android:label="@string/app_name"
             android:theme="@style/SplashTheme"
             android:exported="true"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -48,6 +48,16 @@
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:preferMinimalPostProcessing="true"
             android:exported="true">
+        </activity>
+
+        <!-- Custom in-app file browser. Replaces ACTION_OPEN_DOCUMENT /
+             ACTION_OPEN_DOCUMENT_TREE so the launcher owns the back stack
+             and the user can drill into folders with one Back press per
+             level (at a root, Back dismisses the browser). -->
+        <activity
+            android:name="com.dosboxx.app.InAppFileBrowser"
+            android:label="Choose file"
+            android:configChanges="orientation|screenSize|keyboardHidden">
         </activity>
     </application>
 </manifest>

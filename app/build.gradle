@@ -59,4 +59,15 @@ android {
 }
 
 dependencies {
+    // Archive extraction for game/CD imports. .zip stays on java.util.zip;
+    // .7z needs Apache Commons Compress (SevenZFile) + Tukaani XZ for the
+    // LZMA/LZMA2 codec; .rar (RAR4) needs junrar. commons-io/lang3/codec are
+    // mandatory runtime transitive deps of commons-compress 1.26+, declared
+    // explicitly to pin versions. All pure-Java (no NDK/JNI interaction).
+    implementation 'org.apache.commons:commons-compress:1.26.2'
+    implementation 'org.tukaani:xz:1.10'
+    implementation 'commons-io:commons-io:2.16.1'
+    implementation 'org.apache.commons:commons-lang3:3.14.0'
+    implementation 'commons-codec:commons-codec:1.17.0'
+    implementation 'com.github.junrar:junrar:7.6.0'
 }

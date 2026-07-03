@@ -46,6 +46,7 @@ final class GameImporter {
     public static final int KIND_DOS_CD        = 1;
     public static final int KIND_DOS_CD_SETUP  = 2;
     public static final int KIND_WIN98_MEDIA   = 3;
+    public static final int KIND_WIN98_BOOT    = 4;
 
     /** Request code used by GameLauncherActivity for ACTION_OPEN_DOCUMENT. */
     public static final int REQ_PICK = 4242;
@@ -62,7 +63,7 @@ final class GameImporter {
 
     public static void startSafPicker(Activity a, int requestCode) {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        // .zip / .iso / .cue / .bin / .img — the user picks any of
+        // .zip and DOSBox-X supported CD image files — the user picks any of
         // them and the import dialog figures out which kind it is from the
         // extension. ACTION_OPEN_DOCUMENT with no type works too, but the
         // MIME hints make the picker more useful (Drive shows archives and
@@ -97,11 +98,17 @@ final class GameImporter {
         if (name == null) name = "game";
         final String base = stripExt(name);
         final String ext = extOf(name);
+        final boolean win98BootBundle = isWin98BootBundleName(name);
+
+        if (win98BootBundle) {
+            importSafUri(a, host, uri, base, ext, KIND_WIN98_BOOT);
+            return;
+        }
 
         if (requestCode == REQ_PICK_CD_GAME) {
             if (!isCdMediaName(name)) {
                 Toast.makeText(a,
-                    "CD games need .iso, .cue, .bin, .img, or .zip media.",
+                    "CD games need a supported CD image or .zip media.",
                     Toast.LENGTH_LONG).show();
                 return;
             }
@@ -113,7 +120,16 @@ final class GameImporter {
         }
 
         if (requestCode == REQ_PICK_RIP_GAME) {
-            final Runnable dos = () -> importSafUri(a, host, uri, base, ext, KIND_DOS_GAME);
+            // DOS: a picked disc image is a CD, not a rip — mount/install it
+            // from cds/ instead of trying to unzip it as a game folder. Rips
+            // (.zip) keep the old extract-into-games/ path.
+            final String nameFinal = name;
+            final Runnable dos = () -> {
+                if (isCdImageName(nameFinal))
+                    importSafUri(a, host, uri, base, ext, KIND_DOS_CD_SETUP);
+                else
+                    importSafUri(a, host, uri, base, ext, KIND_DOS_GAME);
+            };
             final Runnable win = () -> {
                 if (!ext.equalsIgnoreCase("zip")) {
                     Toast.makeText(a,
@@ -237,6 +253,8 @@ final class GameImporter {
                 } else if (kind == KIND_WIN98_MEDIA) {
                     host.rescan();
                     host.setupWin98FromMedia(fDest);
+                } else if (kind == KIND_WIN98_BOOT) {
+                    host.installWin98BundleFromZip(fDest);
                 } else {
                     // Archive → existing extract path (handles games/ extract
                     // and the setup-then-pick chain).
@@ -250,15 +268,29 @@ final class GameImporter {
 
     private static int kindForName(String name) {
         String n = name.toLowerCase(Locale.US);
-        if (n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin") || n.endsWith(".img"))
+        if (isCdImageName(n))
             return KIND_DOS_CD;
         return KIND_DOS_GAME;
     }
 
     private static boolean isCdMediaName(String name) {
         String n = name.toLowerCase(Locale.US);
+        return isCdImageName(n) || n.endsWith(".zip");
+    }
+
+    /** A real disc image (not a ZIP-of-disc-images). */
+    private static boolean isCdImageName(String name) {
+        String n = name.toLowerCase(Locale.US);
         return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin")
-            || n.endsWith(".img") || n.endsWith(".zip");
+            || n.endsWith(".img") || n.endsWith(".ccd") || n.endsWith(".chd")
+            || n.endsWith(".mdf") || n.endsWith(".gog") || n.endsWith(".ins")
+            || n.endsWith(".inst");
+    }
+
+    private static boolean isWin98BootBundleName(String name) {
+        String n = name.toLowerCase(Locale.US);
+        return n.endsWith(".zip") && (n.contains("winbox") || n.contains("windows98")
+            || n.contains("windows 98") || n.contains("win98"));
     }
 
     private static String extOf(String name) {
