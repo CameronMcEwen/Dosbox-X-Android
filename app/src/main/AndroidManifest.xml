@@ -19,7 +19,8 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:theme="@style/AppTheme"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:extractNativeLibs="true">
 
         <!-- In-app game launcher / config generator is the entry point. -->
         <activity

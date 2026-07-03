@@ -17,7 +17,6 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
@@ -41,9 +40,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Enumeration;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * Simple on-device game launcher for DOSBox-X.
@@ -54,14 +50,7 @@ import java.util.zip.ZipFile;
  * (SDLActivity), which loads that conf on startup.
  */
 public class GameLauncherActivity extends Activity {
-    private static final String CD_MEDIA_EXTENSIONS = "iso,cue,bin,img,ccd,chd,mdf,gog,ins,inst,zip";
-    private static final String CD_IMAGE_EXTENSIONS = "iso,cue,bin,img,ccd,chd,mdf,gog,ins,inst";
-    private static final String CD_MEDIA_HELP = "CD games need .iso, .cue, .bin, .img, .ccd, .chd, .mdf, .gog, .ins/.inst, or .zip media.";
-
     private static final int REQ_PICK_STORAGE_FOLDER = 9001;
-    /** Picked an existing folder on the device to register as a new MS-DOS
-     *  game (the "Rip folder" option in the Add MS-DOS game chooser). */
-    private static final int REQ_PICK_RIP_FOLDER = 9002;
 
     private File gamesDir;
     private File cdsDir;     // CD library: discs not currently in any changer
@@ -108,47 +97,26 @@ public class GameLauncherActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode != Activity.RESULT_OK || data == null) return;
-        // All our file picks go through the in-app browser and return the
-        // picked path in EXTRA_RESULT_PATH.
-        String path = data.getStringExtra(InAppFileBrowser.EXTRA_RESULT_PATH);
-        if (path != null) {
-            File picked = new File(path);
-            if (requestCode == REQ_PICK_STORAGE_FOLDER) {
-                applyNewBase(picked);
-            } else if (requestCode == REQ_PICK_RIP_FOLDER) {
-                importRipFolderFromPath(picked);
-            } else if (requestCode == GameImporter.REQ_PICK_CD_GAME) {
-                importPickedCdFile(picked);
-            } else if (requestCode == GameImporter.REQ_PICK_RIP_GAME
-                    || requestCode == GameImporter.REQ_PICK) {
-                importPickedRipOrIso(picked, requestCode);
-            }
-            return;
-        }
-        // Legacy content-URI path (older callers we haven't migrated yet —
-        // e.g. someone invokes the system SAF picker directly).
-        Uri uri = data.getData();
-        if (uri == null) return;
-        if (requestCode == REQ_PICK_STORAGE_FOLDER) {
+        if ((requestCode == GameImporter.REQ_PICK
+                || requestCode == GameImporter.REQ_PICK_CD_GAME
+                || requestCode == GameImporter.REQ_PICK_RIP_GAME)
+                && resultCode == Activity.RESULT_OK) {
+            GameImporter.onPickResult(this, data, this, requestCode);
+        } else if (requestCode == REQ_PICK_STORAGE_FOLDER && resultCode == Activity.RESULT_OK
+                && data != null && data.getData() != null) {
+            Uri uri = data.getData();
             try {
                 int flags = data.getFlags()
                     & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 getContentResolver().takePersistableUriPermission(uri, flags);
             } catch (Exception ignored) { }
-            String p = storagePathFromTreeUri(uri);
-            if (p == null) {
+            String path = storagePathFromTreeUri(uri);
+            if (path == null) {
                 Toast.makeText(this, "That folder does not expose a filesystem path DOSBox-X can use.",
                     Toast.LENGTH_LONG).show();
                 return;
             }
-            applyNewBase(new File(p));
-        } else if (requestCode == REQ_PICK_RIP_FOLDER) {
-            importRipFolderFromPath(new File(uri.getPath() != null ? uri.getPath() : ""));
-        } else if (requestCode == GameImporter.REQ_PICK
-                || requestCode == GameImporter.REQ_PICK_CD_GAME
-                || requestCode == GameImporter.REQ_PICK_RIP_GAME) {
-            GameImporter.onPickResult(this, data, this, requestCode);
+            applyNewBase(new File(path));
         }
     }
 
@@ -286,7 +254,8 @@ public class GameLauncherActivity extends Activity {
 
         final AlertDialog[] dialog = new AlertDialog[1];
         addStorageButton(box, "+ Add CD game", dialog, () -> showAddCdGameDialog());
-        addStorageButton(box, "+ Add rip game", dialog, () -> showAddDosGameChooser());
+        addStorageButton(box, "+ Add rip game", dialog,
+            () -> GameImporter.startSafPicker(this, GameImporter.REQ_PICK_RIP_GAME));
         addStorageButton(box, "Set storage folder...", dialog, () -> chooseFolder());
         addStorageButton(box, "Select custom folder...", dialog, () -> startStorageFolderPicker());
         addStorageButton(box, "Use app folder", dialog, () -> applyNewBase(AppConfig.defaultBase(this)));
@@ -532,36 +501,17 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void startStorageFolderPicker() {
-        // Use the in-app file browser so back behavior is owned by us: a
-        // subfolder Back goes up a parent; at a root Back dismisses the
-        // browser. The system SAF picker would navigate up its own tree
-        // and the launcher cannot override that from outside.
-        launchInAppBrowser("Set storage folder",
-            AppConfig.baseDir(this).getAbsolutePath(),
-            InAppFileBrowser.MODE_PICK_FOLDER, REQ_PICK_STORAGE_FOLDER);
-    }
-
-    /** Launch the in-app file browser. The activity returns a String file
-     *  path in EXTRA_RESULT_PATH; onActivityResult routes by requestCode.
-     *  Pass allowedExtensions (lower-case, no leading dot) to hide files
-     *  whose type doesn't match. */
-    private void launchInAppBrowser(String title, String initialPath,
-                                    int mode, int requestCode) {
-        launchInAppBrowser(title, initialPath, mode, requestCode, null);
-    }
-    private void launchInAppBrowser(String title, String initialPath,
-                                    int mode, int requestCode,
-                                    String allowedExtensions) {
-        Intent i = new Intent(this, InAppFileBrowser.class);
-        i.putExtra(InAppFileBrowser.EXTRA_TITLE, title);
-        if (initialPath != null) i.putExtra(InAppFileBrowser.EXTRA_INITIAL_PATH, initialPath);
-        i.putExtra(InAppFileBrowser.EXTRA_MODE, mode);
-        if (allowedExtensions != null) i.putExtra(InAppFileBrowser.EXTRA_ALLOWED_EXTENSIONS, allowedExtensions);
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
         try {
-            startActivityForResult(i, requestCode);
+            startActivityForResult(i, REQ_PICK_STORAGE_FOLDER);
         } catch (Exception e) {
-            Toast.makeText(this, "File browser unavailable: " + e.getMessage(),
+            Toast.makeText(this, "System folder picker unavailable; using simple browser.",
                 Toast.LENGTH_LONG).show();
+            browseCustomStorageFolder();
         }
     }
 
@@ -821,149 +771,6 @@ public class GameLauncherActivity extends Activity {
         File d = new File(cdsDir, ".extracted-cds");
         if (!d.exists()) d.mkdirs();
         return d;
-    }
-
-    /** Import a WinBox 98 SE-style OS bundle as the app's Windows 98 base. */
-    public void installWin98BundleFromZip(final File zip) {
-        if (zip == null || !zip.isFile()) {
-            Toast.makeText(this, "Windows 98 bundle ZIP not found.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        final File outDir = new File(gamesDir, "WinBox98");
-        final File outImg = new File(outDir, "windows98.img");
-        if (outImg.isFile()) {
-            new AlertDialog.Builder(this)
-                .setTitle("Replace Windows 98 base?")
-                .setMessage("This will replace games/WinBox98/windows98.img with the image from "
-                    + zip.getName() + ".")
-                .setPositiveButton("Replace", (d, w) -> extractWin98Bundle(zip, outDir))
-                .setNegativeButton("Cancel", null)
-                .show();
-        } else {
-            extractWin98Bundle(zip, outDir);
-        }
-    }
-
-    private void extractWin98Bundle(final File zip, final File outDir) {
-        final int pad = dp(20);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad, pad, pad);
-        final TextView msg = new TextView(this);
-        msg.setText("Starting extraction...");
-        msg.setTextColor(0xFFE0E0E0);
-        box.addView(msg);
-        final ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bar.setIndeterminate(true);
-        bar.setMax(1000);
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.topMargin = dp(12);
-        box.addView(bar, blp);
-        final AlertDialog dlg = new AlertDialog.Builder(this)
-            .setTitle("Installing Windows 98 base")
-            .setView(box)
-            .setCancelable(false)
-            .show();
-        new Thread(() -> {
-            final boolean ok = extractWin98BundleFiles(zip, outDir, (done, total) -> runOnUiThread(() -> {
-                if (total > 0) {
-                    int permille = (int) Math.min(1000, done * 1000 / total);
-                    bar.setIndeterminate(false);
-                    bar.setProgress(permille);
-                    msg.setText(String.format(Locale.US, "%d%%   (%d / %d MB)",
-                        permille / 10, done >> 20, total >> 20));
-                } else {
-                    msg.setText((done >> 20) + " MB extracted...");
-                }
-            }));
-            runOnUiThread(() -> {
-                dlg.dismiss();
-                if (ok) {
-                    Toast.makeText(this,
-                        "Windows 98 base installed in games/WinBox98.",
-                        Toast.LENGTH_LONG).show();
-                    rescan();
-                } else {
-                    Toast.makeText(this,
-                        "Couldn't find windows98.img in " + zip.getName() + ".",
-                        Toast.LENGTH_LONG).show();
-                }
-            });
-        }).start();
-    }
-
-    private boolean extractWin98BundleFiles(File zip, File outDir, ArchiveExtractor.Progress progress) {
-        if (!outDir.isDirectory() && !outDir.mkdirs()) return false;
-        File imgPart = new File(outDir, "windows98.img.part");
-        File floppyPart = new File(outDir, "WIN98C.IMG.part");
-        boolean gotImg = false;
-        boolean gotFloppy = false;
-        long total = 0;
-        try (ZipFile zf = new ZipFile(zip)) {
-            Enumeration<? extends ZipEntry> entries = zf.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry e = entries.nextElement();
-                String n = e.getName().toLowerCase(Locale.US);
-                if (!e.isDirectory() && (n.endsWith("/windows98.img") || n.equals("windows98.img")
-                        || n.endsWith("/win98.img") || n.equals("win98.img")
-                        || n.endsWith("/win98c.img") || n.equals("win98c.img"))) {
-                    long size = e.getSize();
-                    if (size > 0) total += size;
-                }
-            }
-            long done = 0;
-            entries = zf.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry e = entries.nextElement();
-                String n = e.getName().toLowerCase(Locale.US);
-                if (e.isDirectory()) continue;
-                final File out;
-                final boolean bootImg;
-                if (n.endsWith("/windows98.img") || n.equals("windows98.img")
-                        || n.endsWith("/win98.img") || n.equals("win98.img")) {
-                    out = imgPart;
-                    bootImg = true;
-                } else if (n.endsWith("/win98c.img") || n.equals("win98c.img")) {
-                    out = floppyPart;
-                    bootImg = false;
-                } else {
-                    continue;
-                }
-                try (InputStream in = zf.getInputStream(e);
-                     OutputStream outStream = new FileOutputStream(out)) {
-                    byte[] buf = new byte[1 << 16];
-                    int read;
-                    while ((read = in.read(buf)) > 0) {
-                        outStream.write(buf, 0, read);
-                        done += read;
-                        if (progress != null) progress.onProgress(done, total);
-                    }
-                }
-                if (bootImg) gotImg = true;
-                else gotFloppy = true;
-            }
-        } catch (Exception e) {
-            imgPart.delete();
-            floppyPart.delete();
-            return false;
-        }
-        if (!gotImg) {
-            imgPart.delete();
-            floppyPart.delete();
-            return false;
-        }
-        File img = new File(outDir, "windows98.img");
-        File floppy = new File(outDir, "WIN98C.IMG");
-        if (img.exists() && !img.delete()) return false;
-        if (!imgPart.renameTo(img)) return false;
-        if (gotFloppy) {
-            if (floppy.exists()) floppy.delete();
-            if (!floppyPart.renameTo(floppy)) return false;
-        } else {
-            floppyPart.delete();
-        }
-        return true;
     }
 
     private File newPreparedCdRunDir() {
@@ -1378,9 +1185,7 @@ public class GameLauncherActivity extends Activity {
             labels.add(f.getName() + "  [zip]");
         }
         if (sources.isEmpty()) {
-            launchInAppBrowser("Add CD game", null,
-                InAppFileBrowser.MODE_PICK_FILE, GameImporter.REQ_PICK_CD_GAME,
-                CD_MEDIA_EXTENSIONS);
+            GameImporter.startSafPicker(this, GameImporter.REQ_PICK_CD_GAME);
             return;
         }
         String[] names = labels.toArray(new String[0]);
@@ -1388,9 +1193,7 @@ public class GameLauncherActivity extends Activity {
             .setTitle("Add CD game")
             .setItems(names, (d, w) -> promptCdSourcePlatform(sources.get(w)))
             .setPositiveButton("Import file...", (d, w) ->
-                launchInAppBrowser("Add CD game", null,
-                    InAppFileBrowser.MODE_PICK_FILE, GameImporter.REQ_PICK_CD_GAME,
-                    CD_MEDIA_EXTENSIONS))
+                GameImporter.startSafPicker(this, GameImporter.REQ_PICK_CD_GAME))
             .setNegativeButton("Cancel", null)
             .show();
     }
@@ -1453,221 +1256,6 @@ public class GameLauncherActivity extends Activity {
         }
         return null;
     }
-
-    /** Custom chooser for the main "+ Add MS-DOS game" action row. Two
-     *  paths, both end with a new row in the MS-DOS list ready to configure
-     *  via the Setup / Start EXE cells. Both pickers are the in-app browser
-     *  so the launcher owns the back stack. */
-    private void showAddDosGameChooser() {
-        final String[] items = new String[]{
-            "💿  CD image…",
-            "📁  Rip folder…"
-        };
-        new AlertDialog.Builder(this)
-            .setTitle("Add MS-DOS game")
-            .setItems(items, (d, w) -> {
-                if (w == 0) {
-                    // CD image: pick a DOSBox-X supported image. onActivityResult
-                    // routes it through importPickedRipOrIso, which copies
-                    // to cds/ and runs installCdToMsdos (mount + setup).
-                    launchInAppBrowser("Pick CD image", null,
-                        InAppFileBrowser.MODE_PICK_FILE, GameImporter.REQ_PICK_RIP_GAME,
-                        CD_IMAGE_EXTENSIONS);
-                } else {
-                    // Rip folder: pick a folder. onActivityResult calls
-                    // importRipFolderFromPath, which copies contents into
-                    // games/<basename>/.
-                    launchInAppBrowser("Pick rip folder", null,
-                        InAppFileBrowser.MODE_PICK_FOLDER, REQ_PICK_RIP_FOLDER, null);
-                }
-            })
-            .setNegativeButton("Cancel", null)
-            .show();
-    }
-
-    /** Copy a folder the user picked (in-app browser) into games/&lt;name&gt;/
-     *  on a worker thread. On success a new row appears in the MS-DOS list. */
-    private void importRipFolderFromPath(final File src) {
-        if (!src.isDirectory()) {
-            Toast.makeText(this, src.getAbsolutePath() + " is not a folder.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        final String baseName = src.getName();
-        if (baseName.isEmpty() || baseName.startsWith(".")) {
-            Toast.makeText(this, "Folder name \"" + baseName + "\" is not usable.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        final AlertDialog dlg = new AlertDialog.Builder(this)
-            .setTitle("Adding " + baseName + "…")
-            .setMessage("Copying folder into the games library…")
-            .setCancelable(false)
-            .show();
-        new Thread(() -> {
-            final File dest = uniqueDir(new File(gamesDir, baseName));
-            final boolean ok;
-            if (dest.exists()) deleteContents(dest);
-            ok = copyDir(src, dest);
-            runOnUiThread(() -> {
-                dlg.dismiss();
-                if (!ok) {
-                    deleteContents(dest); dest.delete();
-                    Toast.makeText(this, "Couldn't copy " + baseName + ".", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                Toast.makeText(this, baseName + " added. Tap Setup or Start EXE to configure, then ▶ to play.",
-                    Toast.LENGTH_LONG).show();
-                rescan();
-            });
-        }).start();
-    }
-
-    /** A user picked a CD-image file from the in-app browser. Copy it to
-     *  cds/ and add the row; never run setup automatically — the user
-     *  presses the row to mount/setup. */
-    private void importPickedCdFile(final File picked) {
-        if (!picked.isFile()) {
-            Toast.makeText(this, picked.getAbsolutePath() + " is not a file.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        String n = picked.getName().toLowerCase(java.util.Locale.US);
-        if (!isCdMediaName(n)) {
-            Toast.makeText(this, CD_MEDIA_HELP, Toast.LENGTH_LONG).show();
-            return;
-        }
-        new Thread(() -> {
-            try {
-                File dest = copyCdMediaSetToLibrary(picked);
-                if (dest == null) throw new IOException("copy failed");
-                runOnUiThread(() -> {
-                    Toast.makeText(this, picked.getName() + " added to the CD library.",
-                        Toast.LENGTH_LONG).show();
-                    rescan();
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this,
-                    "Couldn't copy " + picked.getName() + ".", Toast.LENGTH_LONG).show());
-            }
-        }).start();
-    }
-
-    private File copyCdMediaSetToLibrary(File picked) {
-        File dest = copyOneCdFileToLibrary(picked);
-        if (dest == null) return null;
-        String n = picked.getName().toLowerCase(Locale.US);
-        if (n.endsWith(".cue")) {
-            for (String dataName : cueDataNames(picked)) {
-                File data = cueSiblingFile(picked, dataName);
-                if (data == null || copyOneCdFileToLibrary(data) == null) return null;
-            }
-        } else if (n.endsWith(".ccd")) {
-            if (copyOneCdFileToLibrary(cloneCdDataFile(picked)) == null) return null;
-            File sub = siblingWithExtension(picked, ".sub");
-            if (sub.isFile() && copyOneCdFileToLibrary(sub) == null) return null;
-        } else if (n.endsWith(".img")) {
-            File ccd = siblingWithExtension(picked, ".ccd");
-            if (ccd.isFile()) {
-                File ccdDest = copyCdMediaSetToLibrary(ccd);
-                if (ccdDest == null) return null;
-                return ccdDest;
-            }
-        }
-        return dest;
-    }
-
-    private File copyOneCdFileToLibrary(File src) {
-        if (src == null || !src.isFile()) return null;
-        File dst = new File(cdsDir, src.getName());
-        try {
-            if (src.getCanonicalPath().equals(dst.getCanonicalPath())) return dst;
-        } catch (IOException ignored) { }
-        if (dst.exists() && !dst.delete()) return null;
-        return copyFile(src, dst) ? dst : null;
-    }
-
-    private static File cueSiblingFile(File cue, String dataName) {
-        if (cue == null || dataName == null || dataName.trim().isEmpty()) return null;
-        String normalized = dataName.replace('\\', File.separatorChar).replace('/', File.separatorChar);
-        File exact = new File(cue.getParentFile(), normalized);
-        if (exact.isFile()) return exact;
-        String baseName = new File(normalized).getName().toLowerCase(Locale.US);
-        File[] kids = cue.getParentFile() != null ? cue.getParentFile().listFiles() : null;
-        if (kids != null) {
-            for (File k : kids) {
-                if (k != null && k.getName().toLowerCase(Locale.US).equals(baseName)) return k;
-            }
-        }
-        return exact;
-    }
-
-    /** A user picked a .zip rip or a CD image (REQ_PICK_RIP_GAME). Route to
-     *  the right flow: CD image -> install/setup; zip -> extract rip. */
-    private void importPickedRipOrIso(final File picked, final int requestCode) {
-        if (!picked.isFile()) {
-            Toast.makeText(this, picked.getAbsolutePath() + " is not a file.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        String n = picked.getName().toLowerCase(java.util.Locale.US);
-        if (isWin98BootBundleName(n)) {
-            new Thread(() -> {
-                try {
-                    File dest = new File(importDir, picked.getName());
-                    if (dest.exists()) dest.delete();
-                    copyFile(picked, dest);
-                    runOnUiThread(() -> installWin98BundleFromZip(dest));
-                } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(this,
-                        "Couldn't copy " + picked.getName() + ".", Toast.LENGTH_LONG).show());
-                }
-            }).start();
-            return;
-        }
-        if (isCdImageName(n)) {
-            // CD image: copy to cds/ then run installCdToMsdos (mount + setup).
-            new Thread(() -> {
-                try {
-                    File dest = copyCdMediaSetToLibrary(picked);
-                    if (dest == null) throw new IOException("copy failed");
-                    runOnUiThread(() -> {
-                        rescan();
-                        installCdToMsdos(dest);
-                    });
-                } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(this,
-                        "Couldn't copy " + picked.getName() + ".", Toast.LENGTH_LONG).show());
-                }
-            }).start();
-            return;
-        }
-        if (n.endsWith(".zip")) {
-            // Rip: copy to import/ and let the existing extract flow run.
-            new Thread(() -> {
-                try {
-                    File dest = new File(importDir, picked.getName());
-                    if (dest.exists()) dest.delete();
-                    copyFile(picked, dest);
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, picked.getName() + " copied — extracting…",
-                            Toast.LENGTH_SHORT).show();
-                        rescan();
-                        runImport(dest, null);
-                    });
-                } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(this,
-                        "Couldn't copy " + picked.getName() + ".", Toast.LENGTH_LONG).show());
-                }
-            }).start();
-            return;
-        }
-        Toast.makeText(this, "Pick a CD image or .zip rip file.",
-            Toast.LENGTH_LONG).show();
-    }
-
-    private static boolean isWin98BootBundleName(String name) {
-        String n = name.toLowerCase(Locale.US);
-        return n.endsWith(".zip") && (n.contains("winbox") || n.contains("windows98")
-            || n.contains("windows 98") || n.contains("win98"));
-    }
-
 
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
@@ -1994,7 +1582,7 @@ public class GameLauncherActivity extends Activity {
                     if (!hasInstallContent(f) && !winMarker) continue;
                 } else {
                     String n = f.getName().toLowerCase();
-                    if (!isCdImageFile(f) && !n.endsWith(".img")) continue;
+                    if (!(n.endsWith(".img") || n.endsWith(".iso") || n.endsWith(".cue"))) continue;
                 }
                 String dflt = winMarker ? GameMeta.WIN98 : GameMeta.DOS;
                 if (GameMeta.isWindows(GameMeta.platform(this, gameName(f), dflt))) winEntries.add(f);
@@ -2030,7 +1618,10 @@ public class GameLauncherActivity extends Activity {
         // === MS-DOS section (always shown so the first game can be added) ===
         addSectionHeader(labels, "MS-DOS");
         for (File e : dosEntries) addGameRow(labels, e, boot);
-        addActionRow(labels, "➕  Add MS-DOS game", () -> showAddDosGameChooser());
+        addActionRow(labels, "➕  Add MS-DOS game", () -> {
+            GameImporter.sAddPlatform = 1;
+            GameImporter.startSafPicker(this, GameImporter.REQ_PICK_RIP_GAME);
+        });
 
         // === Windows 95 / 98 section ===
         {
@@ -2327,10 +1918,10 @@ public class GameLauncherActivity extends Activity {
                 prepareArchiveCd(archiveDisc, prepared -> bootWin98(boot, prepared));
                 return;
             }
-            disc = mountableCdImage(disc);
-            if (disc == null) return;
+            if (n.endsWith(".bin")) disc = ensureCueForBin(disc);
         }
-        launchBootImage(boot, findBootImage(boot), disc);
+        if (disc != null) mPendingBootDisc = disc;
+        onPick(boot);
     }
 
     private void playWin98Game(String name, File boot, boolean needsCd) {
@@ -2441,33 +2032,9 @@ public class GameLauncherActivity extends Activity {
             return;
         }
         Toast.makeText(this,
-            "Booting " + windowsBootName(boot) + " with " + media.getName() + " mounted as CD-ROM.",
+            "Booting " + windowsBootName(boot) + " with " + media.getName() + ". The CD should be D:\\.",
             Toast.LENGTH_LONG).show();
         bootWin98(boot, media);
-    }
-
-    private void copyCdMediaToWindowsDriveAndBoot(final File media, final File boot) {
-        final File bootFolder = boot != null ? boot : findBootFolder();
-        if (bootFolder == null) {
-            Toast.makeText(this, "No Windows 95/98/ME image found in the games folder.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        File disk = firstGamesDisk(bootFolder);
-        if (disk == null) {
-            File bad = firstInvalidGamesDisk(bootFolder);
-            if (bad != null) {
-                promptRepairGamesDisk(bootFolder, bad, "Repair Windows D: drive?",
-                    "The existing " + bad.getName() + " is " + gamesDiskProblem(bad)
-                    + ". Replace it with a 4 GB writable D: drive, then copy this media into it?",
-                    () -> copyCdMediaToWindowsDriveAndBoot(media, bootFolder),
-                    null);
-                return;
-            }
-            createGamesDiskThenRun(bootFolder, () -> copyCdMediaToWindowsDriveAndBoot(media, bootFolder));
-            return;
-        }
-        prepareCdMedia(media, prepared -> copyIsoToWindowsDisk(prepared, disk,
-            () -> bootWin98(bootFolder, null)));
     }
 
     private void createGamesDiskThenBoot(final File boot, final File media) {
@@ -2663,79 +2230,26 @@ public class GameLauncherActivity extends Activity {
         }).start();
     }
 
-    /** Delete a game folder plus its related contents (per-game keymap,
-     *  persistent C: install drive, attached CD image, gamemeta entry). */
+    /** Delete a game folder (and its per-game keymap + persistent C: drive). */
     private void confirmDeleteGame(final File folder) {
-        // Discover the related contents first so we can show them in the
-        // confirmation dialog (and so the user can opt to keep the CD).
-        final String gameName = folder.getName();
-        final File cDir = new File(gamesDir, ".c/" + KeyMapStore.safeName(gameName));
-        final boolean hasCDir = cDir.isDirectory();
-        final boolean hasKeymap = new File(KeyMapStore.dir(this),
-            KeyMapStore.safeName(gameName) + ".json").isFile();
-        final String attachedCd = GameMeta.cdMedia(this, gameName);
-        final File attachedDisc = (attachedCd != null) ? findCdByStoredName(attachedCd) : null;
-
-        final StringBuilder msg = new StringBuilder()
-            .append("Delete \"").append(gameName).append("\" and all of its saved state? This can't be undone.");
-        if (hasCDir)    msg.append("\n\n• Persistent C: install drive (.c/")
-                          .append(KeyMapStore.safeName(gameName)).append("/)");
-        if (hasKeymap)  msg.append("\n\n• Saved per-game keymap");
-        if (attachedDisc != null) msg.append("\n\n• Attached CD image: ").append(attachedDisc.getName());
-        msg.append("\n\nFolder: ").append(folder.getAbsolutePath());
-
-        final CheckBox keepCd = new CheckBox(this);
-        keepCd.setText("Keep attached CD image");
-        keepCd.setTextColor(0xFFE0E0E0);
-        keepCd.setEnabled(attachedDisc != null);
-        keepCd.setChecked(false);
-        int pad = dp(20);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad, pad, 0);
-        TextView body = new TextView(this);
-        body.setText(msg);
-        body.setTextColor(0xFFE0E0E0);
-        box.addView(body);
-        if (attachedDisc != null) {
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = dp(8);
-            box.addView(keepCd, lp);
-        }
-
         new AlertDialog.Builder(this)
-            .setTitle("Delete " + gameName)
-            .setView(box)
+            .setTitle(folder.getName())
+            .setMessage("Delete this game and its saves from the device? This can't be undone.")
             .setPositiveButton("Delete", (d, w) -> {
-                // Wipe the game folder, including its sidecar files (so a
-                // re-import under the same name doesn't resurrect a stale
-                // launcher or installer reference).
+                // Sidecar files live at the root of the game folder and are
+                // wiped explicitly so a re-import under the same name doesn't
+                // resurrect a stale launcher or installer reference.
                 new File(folder, SIDE_LAUNCHER).delete();
                 new File(folder, SIDE_LAUNCH).delete();
                 deleteContents(folder); folder.delete();
-                // Per-game persistent C: install drive.
-                if (hasCDir) {
+                File cDir = new File(gamesDir, ".c/" + KeyMapStore.safeName(folder.getName()));
+                if (cDir.isDirectory()) {
                     new File(cDir, SIDE_LAUNCHER).delete();
                     new File(cDir, SIDE_LAUNCH).delete();
                     deleteContents(cDir); cDir.delete();
                 }
-                // Per-game keymap (pad / joystick / stick-mouse).
-                if (hasKeymap) KeyMapStore.clear(this, gameName);
-                // Per-game gamemeta entry (platform / needsCd / voodoo / cdMedia).
-                GameMeta.clear(this, gameName);
-                // Optionally also delete the attached CD image; for .cue the
-                // referenced .bin/.img tracks go too.
-                if (attachedDisc != null && attachedDisc.exists() && !keepCd.isChecked()) {
-                    if (attachedDisc.getName().toLowerCase(Locale.US).endsWith(".cue")) {
-                        for (String dn : cueDataNames(attachedDisc)) {
-                            File data = new File(attachedDisc.getParentFile(), dn);
-                            if (data.isFile()) data.delete();
-                        }
-                    }
-                    attachedDisc.delete();
-                }
-                Toast.makeText(this, gameName + " deleted.", Toast.LENGTH_SHORT).show();
+                GameMeta.clear(this, folder.getName());
+                Toast.makeText(this, folder.getName() + " deleted.", Toast.LENGTH_SHORT).show();
                 rescan();
             })
             .setNegativeButton("Cancel", null)
@@ -2788,30 +2302,16 @@ public class GameLauncherActivity extends Activity {
 
     private static boolean isCdImageFile(File f) {
         if (f == null || f.isDirectory()) return false;
-        return isCdImageName(f.getName());
-    }
-
-    private static boolean isCdImageName(String name) {
-        String n = name.toLowerCase(Locale.US);
-        return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin")
-            || n.endsWith(".img") || n.endsWith(".ccd") || n.endsWith(".chd")
-            || n.endsWith(".mdf") || n.endsWith(".gog") || n.endsWith(".ins")
-            || n.endsWith(".inst");
-    }
-
-    private static boolean isCdMediaName(String name) {
-        String n = name.toLowerCase(Locale.US);
-        return isCdImageName(n) || n.endsWith(".zip");
+        String n = f.getName().toLowerCase(Locale.US);
+        return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin") || n.endsWith(".img");
     }
 
     private static boolean isCdMediaListFile(File f) {
         if (f == null || f.isDirectory()) return false;
         if (isArchiveCdFile(f)) return false;
         String n = f.getName().toLowerCase(Locale.US);
-        if (n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".ccd")
-                || n.endsWith(".chd") || n.endsWith(".mdf") || n.endsWith(".gog")
-                || n.endsWith(".ins") || n.endsWith(".inst")) return true;
-        if (n.endsWith(".bin") || n.endsWith(".img")) return !isCueReferencedTrack(f) && !isCloneCdDataTrack(f);
+        if (n.endsWith(".iso") || n.endsWith(".cue")) return true;
+        if (n.endsWith(".bin") || n.endsWith(".img")) return !isCueReferencedTrack(f);
         return false;
     }
 
@@ -2844,7 +2344,8 @@ public class GameLauncherActivity extends Activity {
 
     private static boolean isIsoCueOrBin(File f) {
         if (f == null || f.isDirectory()) return false;
-        return isCdImageName(f.getName());
+        String n = f.getName().toLowerCase(Locale.US);
+        return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin");
     }
 
     /** Import tab: lists .zip archives dropped in import/. Tapping one
@@ -2954,22 +2455,12 @@ public class GameLauncherActivity extends Activity {
             prepareArchiveCd(archiveDisc, prepared -> installCdToMsdos(prepared, archiveDisc.getName()));
             return;
         }
-        File mountableDisc = mountableCdImage(disc);
-        if (mountableDisc == null) return;
-        if (!mountableDisc.equals(disc)) {
-            installCdToMsdos(mountableDisc, sourceMediaName != null ? sourceMediaName : disc.getName());
-            return;
-        }
-        // Reject orphan .cue files up front. Without the referenced track
-        // present, imgmount fails silently and the user ends up at the
-        // Z: prompt wondering why nothing happened.
-        if (cueReferencesMissingData(disc)) {
-            new AlertDialog.Builder(this)
-                .setTitle(disc.getName())
-                .setMessage("This .cue file references a track that is missing from the CD library. The CD cannot be mounted until every referenced file is present alongside the .cue.")
-                .setPositiveButton("OK", null)
-                .show();
-            return;
+        if (disc.getName().toLowerCase(Locale.US).endsWith(".bin")) {
+            File cue = ensureCueForBin(disc);
+            if (!cue.equals(disc)) {
+                installCdToMsdos(cue, sourceMediaName != null ? sourceMediaName : disc.getName());
+                return;
+            }
         }
         final String name = discName(disc);
         final File dest = cleanInstallDirForCd(name);
@@ -3018,36 +2509,10 @@ public class GameLauncherActivity extends Activity {
     private void promptMsdosSetupProgram(final File disc, final String name, final File dest) {
         final IsoReader.Scan scan = IsoReader.scan(disc, 4);
         if (scan.allPrograms.isEmpty()) {
-            // No program auto-detected (e.g. a data CD, or one whose only
-            // exes live behind non-Joliet long names the scanner missed).
-            // Let the user type a program name to run from D:, or just open
-            // DOS at D:\ to browse by hand.
-            final EditText programInput = new EditText(this);
-            programInput.setSingleLine(true);
-            programInput.setText("SETUP.EXE");
-            programInput.setHint("SETUP.EXE, INSTALL\\SETUP.EXE, GAME\\GAME.EXE, ...");
-            programInput.setSelection(programInput.getText().length());
-            int pad = (int) (16 * getResources().getDisplayMetrics().density);
-            FrameLayout wrapper = new FrameLayout(this);
-            wrapper.setPadding(pad, pad / 2, pad, 0);
-            wrapper.addView(programInput,
-                new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT));
             new AlertDialog.Builder(this)
                 .setTitle(name)
-                .setMessage("No setup program was auto-detected on this CD. Mount it as D: in DOS, then run the program you specify below.")
-                .setView(wrapper)
-                .setPositiveButton("Run", (d, w) -> {
-                    String typed = programInput.getText().toString().trim();
-                    if (typed.isEmpty()) {
-                        Toast.makeText(this, "No program name — opening DOS at D:\\ instead.", Toast.LENGTH_SHORT).show();
-                        doInstallCdToMsdos(disc, name, dest, null);
-                    } else {
-                        doInstallCdToMsdos(disc, name, dest, typed);
-                    }
-                })
-                .setNeutralButton("Open DOS", (d, w) -> doInstallCdToMsdos(disc, name, dest, null))
+                .setMessage("No executable program was found on this CD. Open the mounted CD at D:\\ anyway?")
+                .setPositiveButton("Open D:", (d, w) -> doInstallCdToMsdos(disc, name, dest, null))
                 .setNegativeButton("Cancel", null)
                 .show();
             return;
@@ -3093,15 +2558,12 @@ public class GameLauncherActivity extends Activity {
             lines.add("d:");
             addCdAndRun(lines, setupProgram);
         } else {
-            // No setup program on the CD. Land the prompt on D: (or C: if
-            // the imgmount failed) and tell the user what each drive is,
-            // rather than dumping them at an empty C: with no context.
-            lines.add("cls");
             lines.add("d:");
+            lines.add("cls");
             lines.add("dir /w");
             lines.add("echo.");
-            lines.add("echo --- D: is this CD. Type a program name to run it. ---");
-            lines.add("echo --- C: is your install drive. ---");
+            lines.add("echo C: is your empty install drive.");
+            lines.add("echo No setup program was auto-detected on this D: CD.");
         }
         mPendingSetupFolder = dest;
         mPendingSetupFromCd = true;
@@ -3349,15 +2811,6 @@ public class GameLauncherActivity extends Activity {
      * sees it, then `boot -l c`.
      */
     private void launchBootImage(final File folder, final File bootImg) {
-        launchBootImage(folder, bootImg, null);
-    }
-
-    private void launchBootImage(final File folder, final File bootImg, final File bootDisc) {
-        if (bootImg == null) {
-            Toast.makeText(this, "No Windows 95/98/ME image found in " + folder.getName() + ".",
-                Toast.LENGTH_LONG).show();
-            return;
-        }
         // .zip "CDs" dropped in the folder become real ISOs first — a booted
         // guest can only read IDE-attached image mounts, never host folders
         // or archives, so the zip's contents are pressed onto an ISO9660+
@@ -3367,7 +2820,7 @@ public class GameLauncherActivity extends Activity {
         final List<File> zips = new ArrayList<>();
         for (File z : all) if (!isoFor(z).isFile()) zips.add(z);
         if (zips.isEmpty()) {
-            doLaunchBootImage(folder, bootImg, bootDisc);
+            doLaunchBootImage(folder, bootImg);
             return;
         }
         final AlertDialog dlg = new AlertDialog.Builder(this)
@@ -3386,7 +2839,7 @@ public class GameLauncherActivity extends Activity {
                     Toast.makeText(this, "Couldn't convert: " + TextUtils.join(", ", failed),
                         Toast.LENGTH_LONG).show();
                 }
-                doLaunchBootImage(folder, bootImg, bootDisc);
+                doLaunchBootImage(folder, bootImg);
             });
         }).start();
     }
@@ -3398,10 +2851,6 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void doLaunchBootImage(File folder, File bootImg) {
-        doLaunchBootImage(folder, bootImg, null);
-    }
-
-    private void doLaunchBootImage(File folder, File bootImg, File bootDisc) {
         List<String> lines = new ArrayList<>();
         File floppy = findBootFloppy(folder);
         if (floppy != null) {
@@ -3411,8 +2860,8 @@ public class GameLauncherActivity extends Activity {
         // the library, IDE secondary master. The Win98 guest assigns the
         // visible drive letter itself; DOSBox-X only needs a CD-style mount
         // letter here so the ATAPI device is attached before boot.
-        File disc = bootDisc != null ? bootDisc : mPendingBootDisc;
-        if (bootDisc == null) mPendingBootDisc = null;
+        File disc = mPendingBootDisc;
+        mPendingBootDisc = null;
         long cylinders = bootImg.length() / (512L * 63 * 255);
         lines.add("imgmount 2 \"" + bootImg.getAbsolutePath()
             + "\" -size 512,63,255," + cylinders + " -t hdd -fs none -ide 1m");
@@ -3432,18 +2881,14 @@ public class GameLauncherActivity extends Activity {
             }
         }
         if (disc != null && disc.isFile()) {
-            File mountable = mountableCdImage(disc);
-            if (mountable == null) return;
-            lines.add("imgmount d \"" + mountable.getAbsolutePath() + "\" -t iso -fs iso -ide 1s");
+            File mountable = isRawCdTrack(disc) ? ensureCueForBin(disc) : disc;
+            lines.add("imgmount d \"" + mountable.getAbsolutePath() + "\" -t iso -ide 2m");
         }
-        lines.add("boot -l c");
+        lines.add("boot c:");
 
         Map<String, Integer> map = KeyMapStore.load(this, folder.getName());
         org.libsdl.app.SDLActivity.setKeyMap(map);
-        // Windows 9x should always see a gameport joystick. The SDL layer
-        // already runs in hybrid mode, so this only controls whether the
-        // guest hardware exists in DOSBox-X.
-        boolean joy = true;
+        boolean joy = KeyMapStore.loadJoystickMode(this, folder.getName());
         org.libsdl.app.SDLActivity.setJoystickMode(joy);
         org.libsdl.app.SDLActivity.setStickMouseMode(false);
         // Windows draws its own cursor — touch acts as a trackpad instead.
@@ -3480,36 +2925,25 @@ public class GameLauncherActivity extends Activity {
         sb.append("[dosbox]\nmachine=svga_s3\nmemsize=512\nvmemsize=4\n");
         sb.append("enable pci bus=true\n");
         sb.append("locking disk image mount=false\n\n");
-        // pentium_mmx: Win98 itself uses MMX in its GDI/graphics stack, and
-        // most 3dfx-era Win9x apps assume MMX. Cost on the host side is zero
-        // (still emulated as Pentium-class).
-        // cycles=max 100% (not 105%): the 5% overcommit races the Voodoo
-        // software rasterizer on the same emulation thread and produces
-        // occasional Win98 input/draw stalls. 100% is plenty for the guest.
-        sb.append("[cpu]\ncore=dynamic\ncputype=pentium_mmx\ncycles=max 100%\nisapnpbios=true\n\n");
+        sb.append("[cpu]\ncore=dynamic\ncputype=pentium\ncycles=max 105%\nisapnpbios=true\n\n");
         sb.append("[mixer]\nnosound=false\nrate=44100\nblocksize=1024\nprebuffer=25\n\n");
         sb.append("[sblaster]\nsbtype=sb16\nsbbase=220\nirq=7\ndma=1\nhdma=5\noplmode=auto\n\n");
         sb.append("[dos]\nxms=false\nems=false\numb=false\n\n");
-        sb.append("[ide, primary]\nenable=true\npnp=true\nint13fakeio=true\nint13fakev86io=true\n\n");
-        sb.append("[ide, secondary]\nenable=true\npnp=true\nint13fakeio=true\nint13fakev86io=true\ncd-rom insertion delay=4000\n\n");
+        sb.append("[ide, primary]\nenable=true\n\n");
+        sb.append("[ide, secondary]\nenable=true\ncd-rom insertion delay=4000\n\n");
         sb.append("[ide, tertiary]\nenable=true\n\n[ide, quaternary]\nenable=true\n\n");
-        // Emulated Voodoo1 PCI card for Glide games inside the guest.
-        //   voodoo_card=software — CPU rasterizer (the OpenGL backend is
-        //     stubbed in libmain; software is the only path that works).
-        //   voodoo_maxmem=true   — 4MB front + 2x4MB texture = 12MB total.
-        //     Matches the 3dfx Voodoo1 reference board the guest's inbox
-        //     driver binds to.
-        // The guest image is expected to have the 3dfx reference kit
-        // installed (WinBox98 SE bundle has it at C:\DRIVERS\VOODOO1 with
-        // glide2x/glide3x/3dfxOGL.dll+fxmemmap.vxd pre-dropped in
-        // C:\WINDOWS\SYSTEM). If glide inside Win98 reports "no 3dfx
-        // device", Device Manager → Display adapters will show only the
-        // SVGA card; install the Voodoo1 driver from C:\DRIVERS\VOODOO1.
-        sb.append("[voodoo]\nvoodoo_card=software\nvoodoo_maxmem=true\n\n");
+        // Emulated Voodoo1 PCI card for Glide games inside the guest — the
+        // guest needs the 3dfx reference drivers installed (staged at
+        // C:\DRIVERS\VOODOO1 in the WinBox image).
+        sb.append("[voodoo]\nvoodoo_card=software\n\n");
         // Windows guests need timed=true: VJOYD detects the joystick by timing
-        // the gameport's analog discharge. Untimed mode reads as "not
-        // connected" in Windows Game Controllers.
-        if (joystick) sb.append("[joystick]\njoysticktype=2axis\ntimed=true\njoy1deadzone1=0.35\njoy1deadzone2=0.35\n\n");
+        // the gameport's analog discharge — untimed mode reads as "not
+        // connected" in Game Controllers. 4axis exposes all 4 buttons for the
+        // "2-axis, 4-button" profile. (DOS games keep 2axis/untimed.)
+        // Joystick: only when explicitly enabled for this game. Forcing a
+        // gameport joystick on (esp. timed=true) can hang the Win9x shell at the
+        // teal desktop, so the Windows boot defaults to none.
+        if (joystick) sb.append("[joystick]\njoysticktype=2axis\ntimed=false\njoy1deadzone1=0.35\njoy1deadzone2=0.35\n\n");
         else          sb.append("[joystick]\njoysticktype=none\n\n");
         sb.append("[autoexec]\n@echo off\n");
         for (String l : autoexec) sb.append(l).append("\n");
@@ -4256,12 +3690,6 @@ public class GameLauncherActivity extends Activity {
         return false;
     }
 
-    private static boolean isCloneCdDataTrack(File track) {
-        if (track == null || track.isDirectory()) return false;
-        String n = track.getName().toLowerCase(Locale.US);
-        return n.endsWith(".img") && siblingWithExtension(track, ".ccd").isFile();
-    }
-
     private static String cueDataBaseName(String name) {
         if (name == null) return "";
         String n = name.replace('\\', '/');
@@ -5002,41 +4430,12 @@ public class GameLauncherActivity extends Activity {
                 prepared -> launchDosGameWithLibraryCd(folder, launcher, gameName, prepared, false));
             return;
         }
-        File mountable = mountableCdImage(pick);
-        if (mountable == null) return;
+        File mountable = ensureCueForBin(pick);
         List<File> cds = new ArrayList<>();
         cds.add(mountable);
         setKeymapAndLaunch(folder.getName(),
             mountLines(folder, launcher, cds),
             launcher != null ? launcher.getName() : null);
-    }
-
-    private File mountableCdImage(File pick) {
-        if (pick == null) return null;
-        String n = pick.getName().toLowerCase(Locale.US);
-        if (n.endsWith(".ccd")) {
-            if (!cloneCdDataFile(pick).isFile()) {
-                Toast.makeText(this,
-                    pick.getName() + " needs its matching .img file beside it.",
-                    Toast.LENGTH_LONG).show();
-                return null;
-            }
-            return pick;
-        }
-        if (n.endsWith(".cue")) {
-            if (cueReferencesMissingData(pick)) {
-                Toast.makeText(this,
-                    pick.getName() + " has missing track files in the CD library.",
-                    Toast.LENGTH_LONG).show();
-                return null;
-            }
-            return pick;
-        }
-        if (n.endsWith(".img")) {
-            File ccd = siblingWithExtension(pick, ".ccd");
-            if (ccd.isFile()) return ccd;
-        }
-        return isRawCdTrack(pick) ? ensureCueForBin(pick) : pick;
     }
 
     /** For a raw .bin track DOSBox can't mount with -t iso (it needs a .cue
@@ -5073,68 +4472,14 @@ public class GameLauncherActivity extends Activity {
     }
 
     private String imgmountCdLine(File disc) {
-        File mountable = mountableCdImage(disc);
-        if (mountable == null) mountable = disc;
+        File mountable = isRawCdTrack(disc) ? ensureCueForBin(disc) : disc;
         return "imgmount d \"" + mountable.getAbsolutePath() + "\" -t iso";
-    }
-
-    private static File cloneCdDataFile(File ccd) {
-        return siblingWithExtension(ccd, ".img");
-    }
-
-    private static File siblingWithExtension(File file, String ext) {
-        String n = file.getName();
-        int dot = n.lastIndexOf('.');
-        String base = dot >= 0 ? n.substring(0, dot) : n;
-        File exact = new File(file.getParentFile(), base + ext);
-        if (exact.isFile()) return exact;
-        File dir = file.getParentFile();
-        File[] kids = dir != null ? dir.listFiles() : null;
-        String wanted = (base + ext).toLowerCase(Locale.US);
-        if (kids != null) {
-            for (File k : kids) {
-                if (k != null && k.getName().toLowerCase(Locale.US).equals(wanted)) return k;
-            }
-        }
-        return exact;
     }
 
     private static boolean isRawCdTrack(File f) {
         if (f == null || f.isDirectory()) return false;
         String n = f.getName().toLowerCase(java.util.Locale.US);
-        // .img is ambiguous: it can be an ISO-9660 disc image (the common
-        // case for DOS game CDs) or a raw Mode1/2352 track. Only treat it
-        // as raw if its sibling .bin is actually present, otherwise an
-        // auto-generated .cue would point at a missing .bin and imgmount
-        // would fail with the MSCDEX "drive D: does not exist" error.
-        if (n.endsWith(".bin")) return true;
-        if (n.endsWith(".img")) {
-            File bin = new File(f.getParentFile(),
-                f.getName().substring(0, f.getName().length() - 4) + ".bin");
-            return bin.isFile();
-        }
-        return false;
-    }
-
-    /** True for a .cue whose FILE lines point at any missing track file.
-     *  Matching is case-insensitive because Android storage is case-sensitive
-     *  while old cue sheets often disagree with the real track filename case. */
-    private static boolean cueReferencesMissingData(File cue) {
-        if (cue == null || !cue.isFile()) return false;
-        if (!cue.getName().toLowerCase(java.util.Locale.US).endsWith(".cue")) return false;
-        File[] siblings = cue.getParentFile().listFiles();
-        if (siblings == null) return false;
-        for (String name : cueDataNames(cue)) {
-            boolean found = false;
-            for (File s : siblings) {
-                if (s != null && s.getName().equalsIgnoreCase(name)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) return true;
-        }
-        return false;
+        return n.endsWith(".bin") || n.endsWith(".img");
     }
 
     /** Find a disc in cds/ whose name matches a game folder. Match order:

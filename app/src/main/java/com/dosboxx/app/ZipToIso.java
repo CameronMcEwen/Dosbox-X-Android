@@ -20,8 +20,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+
 /**
- * Builds an ISO9660 CD image from a .zip/.7z/.rar archive so its contents can be
+ * Builds an ISO9660 CD image from a .zip archive so its contents can be
  * IMGMOUNTed as a real (IDE-attached) CD drive — the only kind of mount a
  * booted guest OS (Win95/98/ME) can see; host-folder MOUNTs are invisible to
  * a booted guest. Writes both namespaces every Win9x CD shipped with:
@@ -30,20 +31,18 @@ import java.util.zip.ZipFile;
  *
  * Counterpart of {@link IsoReader} (which reads images); kept similarly
  * minimal: no Rock Ridge, no boot catalog, no multi-extent (>4GB) files.
- * Reads via {@link ArchiveExtractor.Source} so any supported archive format
- * (zip/7z/rar) presses into an identical ISO.
  */
 final class ZipToIso {
 
     private static final int SECTOR = 2048;
 
-    /** Tree node for one archive entry (or a directory implied by entry paths). */
+    /** Tree node for one zip entry (or a directory implied by entry paths). */
     private static final class Node {
         final String name;          // original name (Joliet namespace)
         final boolean dir;
         final Node parent;
         final List<Node> children = new ArrayList<>();
-        ZipEntry entry;   // files only
+        ZipEntry entry;             // files only
         long size;                  // files only
         String isoName;             // 8.3 uppercase (no ";1" version suffix)
         String jolName;             // possibly truncated to 64 chars
