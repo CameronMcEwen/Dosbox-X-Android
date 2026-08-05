@@ -931,7 +931,9 @@ public class GameLauncherActivity extends Activity {
      *  picks don't go through here — the importer copies them straight to
      *  cds/ and can immediately start the selected setup flow. */
     public void runImport(final File archive, final AlertDialog progressDialog) {
-        extractArchiveAndContinue(archive, /*asCd*/ false, progressDialog, this::promptSetupForFolder);
+        extractArchiveAndContinue(archive, /*asCd*/ false, progressDialog, folder -> {
+            Toast.makeText(this, "Game installed: " + folder.getName(), Toast.LENGTH_SHORT).show();
+        });
     }
 
     /** Like the old extractArchive(), but takes an already-shown progress dialog
@@ -974,7 +976,7 @@ public class GameLauncherActivity extends Activity {
             final File fReady = readyFolder;
             final int fWinVer = winVer;
             runOnUiThread(() -> {
-                dlg.dismiss();
+                if (dlg != null) dlg.dismiss();
                 if (!ok || fReady == null) {
                     Toast.makeText(this, "Couldn't extract " + archive.getName() + ".", Toast.LENGTH_LONG).show();
                     if (fReady != null) { deleteContents(fReady); fReady.delete(); }
@@ -1443,9 +1445,21 @@ public class GameLauncherActivity extends Activity {
             } catch (Exception e) {}
         }
 
+        android.widget.ScrollView vsv = new android.widget.ScrollView(this);
+        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+        vsv.setFillViewport(true);
+        hsv.setFillViewport(true);
+
+        int pad = dp(16);
+        vsv.setPadding(pad, pad, pad, pad);
+
+        hsv.addView(input, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        vsv.addView(hsv);
+
         new AlertDialog.Builder(this)
             .setTitle("Edit dosbox-x.conf")
-            .setView(input)
+            .setView(vsv)
             .setPositiveButton("Save & Launch", (d, w) -> {
                 String conf = input.getText().toString();
                 writeAndLaunch(conf, "custom");
@@ -1466,10 +1480,22 @@ public class GameLauncherActivity extends Activity {
 
         input.setText(AppConfig.getAdvancedSettings(this));
 
+        android.widget.ScrollView vsv = new android.widget.ScrollView(this);
+        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+        vsv.setFillViewport(true);
+        hsv.setFillViewport(true);
+
+        int pad = dp(16);
+        vsv.setPadding(pad, pad, pad, pad);
+
+        hsv.addView(input, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        vsv.addView(hsv);
+
         new AlertDialog.Builder(this)
             .setTitle("Advanced DOSBox-X Commands")
             .setMessage("These commands are appended to every generated config file.")
-            .setView(input)
+            .setView(vsv)
             .setPositiveButton("Save", (d, w) -> {
                 AppConfig.setAdvancedSettings(this, input.getText().toString());
             })
@@ -1569,7 +1595,7 @@ public class GameLauncherActivity extends Activity {
                 edit.setAllCaps(false);
                 edit.setTextSize(12);
                 edit.setOnClickListener(v -> {
-                    GameImporter.showEditWizard(GameLauncherActivity.this, e.name, () -> rescan());
+                    GameImporter.showEditWizard(GameLauncherActivity.this, GameLauncherActivity.this, e.name, () -> rescan());
                 });
                 btns.addView(edit);
 
@@ -3948,7 +3974,7 @@ public class GameLauncherActivity extends Activity {
             Toast.LENGTH_LONG).show();
     }
 
-    private void showControlMapper(final String gameName) {
+    void showControlMapper(final String gameName) {
         final Map<String, Integer> map = keyMapForEdit(gameName);
         String[] rows = new String[KeyMapStore.BUTTONS.length];
         for (int i = 0; i < KeyMapStore.BUTTONS.length; i++) {

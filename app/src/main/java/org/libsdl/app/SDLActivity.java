@@ -1912,6 +1912,14 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      * @return if the message was handled in overridden method.
      */
     protected boolean onUnhandledMessage(int command, Object param) {
+        if (command == 0x8001) {
+            Intent intent = new Intent(this, com.dosboxx.app.DosConfigActivity.class);
+            if (param instanceof Integer && (Integer)param != 0) {
+                intent.putExtra("select", (Integer)param);
+            }
+            startActivity(intent);
+            return true;
+        }
         return false;
     }
 

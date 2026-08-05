@@ -1,0 +1,496 @@
+diff --git a/src/gui/sdl_gui.cpp b/src/gui/sdl_gui.cpp
+index ec2af889f..31f45ee8a 100644
+--- a/src/gui/sdl_gui.cpp
++++ b/src/gui/sdl_gui.cpp
+@@ -406,14 +406,14 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
+             uint32_t *bg = (uint32_t*)((unsigned int)(y+sy)*(unsigned int)background->pitch + (char*)background->pixels) + sx;
+             for (int x = 0; x < sw_draw; x++) {
+                 int r = 0, g = 0, b = 0;
+-                getPixel(x    *(int)render.src.width/sw, y    *(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel((x-1)*(int)render.src.width/sw, y    *(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel(x    *(int)render.src.width/sw, (y-1)*(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel((x-1)*(int)render.src.width/sw, (y-1)*(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel((x+1)*(int)render.src.width/sw, y    *(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel(x    *(int)render.src.width/sw, (y+1)*(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel((x+1)*(int)render.src.width/sw, (y+1)*(int)render.src.height/sh, r, g, b, 3); 
+-                getPixel((x-1)*(int)render.src.width/sw, (y+1)*(int)render.src.height/sh, r, g, b, 3); 
++                getPixel(x    *(int)render.src.width/sw, y    *(int)render.src.height/sh, r, g, b, 3);
++                getPixel((x-1)*(int)render.src.width/sw, y    *(int)render.src.height/sh, r, g, b, 3);
++                getPixel(x    *(int)render.src.width/sw, (y-1)*(int)render.src.height/sh, r, g, b, 3);
++                getPixel((x-1)*(int)render.src.width/sw, (y-1)*(int)render.src.height/sh, r, g, b, 3);
++                getPixel((x+1)*(int)render.src.width/sw, y    *(int)render.src.height/sh, r, g, b, 3);
++                getPixel(x    *(int)render.src.width/sw, (y+1)*(int)render.src.height/sh, r, g, b, 3);
++                getPixel((x+1)*(int)render.src.width/sw, (y+1)*(int)render.src.height/sh, r, g, b, 3);
++                getPixel((x-1)*(int)render.src.width/sw, (y+1)*(int)render.src.height/sh, r, g, b, 3);
+                 int r1, g1, b1;
+ #if defined(USE_TTF)
+                 if (ttf.inUse && confres) {
+@@ -444,7 +444,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
+                 }
+                 bg[x] = ((unsigned int)r1 << (unsigned int)rs) |
+                     ((unsigned int)g1 << (unsigned int)gs) |
+-                    ((unsigned int)b1 << (unsigned int)bs); 
++                    ((unsigned int)b1 << (unsigned int)bs);
+             }
+         }
+     }
+@@ -472,14 +472,14 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
+         SDL_Event event;
+         SDL_SetSurfaceBlendMode(screenshot, SDL_BLENDMODE_BLEND);
+         for (int i = 0xff; i > 0; i -= 0x40) {
+-            SDL_SetSurfaceAlphaMod(screenshot, i); 
+-            SDL_BlitSurface(background, NULL, sdlscreen, NULL); 
++            SDL_SetSurfaceAlphaMod(screenshot, i);
++            SDL_BlitSurface(background, NULL, sdlscreen, NULL);
+             SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL);
+             SDL_Window* GFX_GetSDLWindow(void);
+             SDL_UpdateWindowSurface(GFX_GetSDLWindow());
+-            while (SDL_PollEvent(&event)); 
+-            SDL_Delay(40); 
+-        } 
++            while (SDL_PollEvent(&event));
++            SDL_Delay(40);
++        }
+         SDL_SetSurfaceBlendMode(screenshot, SDL_BLENDMODE_NONE);
+     }
+ #else
+@@ -489,24 +489,24 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
+     if (screenshot != NULL && background != NULL) {
+         // fade out
+         // Jonathan C: do it FASTER!
+-        SDL_Event event; 
++        SDL_Event event;
+         for (int i = 0xff; i > 0; i -= 0x40) {
+-            SDL_SetAlpha(screenshot, SDL_SRCALPHA, i); 
+-            SDL_BlitSurface(background, NULL, sdlscreen, NULL); 
+-            SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL); 
+-            SDL_UpdateRect(sdlscreen, 0, 0, 0, 0); 
+-            while (SDL_PollEvent(&event)); 
+-            SDL_Delay(40); 
++            SDL_SetAlpha(screenshot, SDL_SRCALPHA, i);
++            SDL_BlitSurface(background, NULL, sdlscreen, NULL);
++            SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL);
++            SDL_UpdateRect(sdlscreen, 0, 0, 0, 0);
++            while (SDL_PollEvent(&event));
++            SDL_Delay(40);
+         }
+     }
+ #endif
+- 
++
+     if (screenshot != NULL && background != NULL)
+         SDL_BlitSurface(background, NULL, sdlscreen, NULL);
+ #if defined(C_SDL2)
+     SDL_Window* GFX_GetSDLWindow(void);
+     SDL_UpdateWindowSurface(GFX_GetSDLWindow());
+-#else   
++#else
+     SDL_UpdateRect(sdlscreen, 0, 0, 0, 0);
+ #endif
+ 
+@@ -611,14 +611,14 @@ static void UI_Shutdown(GUI::ScreenSDL *screen) {
+         SDL_Event event;
+         SDL_SetSurfaceBlendMode(screenshot, SDL_BLENDMODE_BLEND);
+         for (unsigned int i = 0x00; i < 0xff; i += 0x60) {
+-            SDL_SetSurfaceAlphaMod(screenshot, i); 
+-            SDL_BlitSurface(background, NULL, sdlscreen, NULL); 
++            SDL_SetSurfaceAlphaMod(screenshot, i);
++            SDL_BlitSurface(background, NULL, sdlscreen, NULL);
+             SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL);
+             SDL_Window* GFX_GetSDLWindow(void);
+             SDL_UpdateWindowSurface(GFX_GetSDLWindow());
+-            while (SDL_PollEvent(&event)); 
+-            SDL_Delay(40); 
+-        } 
++            while (SDL_PollEvent(&event));
++            SDL_Delay(40);
++        }
+         SDL_SetSurfaceBlendMode(screenshot, SDL_BLENDMODE_NONE);
+     }
+ 
+@@ -635,7 +635,7 @@ static void UI_Shutdown(GUI::ScreenSDL *screen) {
+             SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL);
+             SDL_UpdateRect(sdlscreen, 0, 0, 0, 0);
+             while (SDL_PollEvent(&event)) {}
+-            SDL_Delay(40); 
++            SDL_Delay(40);
+         }
+     }
+ #endif
+@@ -1555,7 +1555,7 @@ public:
+         Property *property;
+         std::vector<Property*> properties;
+         auto propertyIndex = 0;
+-        
++
+         while ((property = section->Get_prop(propertyIndex++)))
+         {
+             properties.push_back(property);
+@@ -1565,7 +1565,7 @@ public:
+         {
+             return a->propname < b->propname;
+         });
+-        
++
+         for(const auto & prop : properties)
+         {
+             if (!advopt->isChecked() && !prop->basic()) {i++;continue;}
+@@ -3335,7 +3335,7 @@ public:
+         bar->addItem(0,"");
+         bar->addItem(0,MSG_Get("CLOSE"));
+         bar->addMenu(MSG_Get("SETTINGS"));
+-        
++
+         // theme menu
+         bar->addMenu(MSG_Get("THEME"));
+         for (size_t ti=0;ti < (sizeof(theme_presets)/sizeof(theme_presets[0]));ti++) {
+@@ -3346,7 +3346,7 @@ public:
+ 
+             bar->addItem(2, theme_presets[ti].name);
+         }
+-        
++
+         bar->addMenu(mainMenu.get_item("HelpMenu").get_text().c_str());
+         bar->addItem(3,MSG_Get("VISIT_HOMEPAGE"));
+         bar->addItem(3,"");
+@@ -3368,10 +3368,10 @@ public:
+         int i = 0;
+ 
+         constexpr auto margin = 3;
+-        
++
+         const auto xSpace = gridbtnwidth + margin;
+         const auto ySpace = gridbtnheight + margin;
+-        
++
+         std::function< std::pair<int,int>(const int) > gridfunc = [&/*access to locals here*/](const int i){
+             return std::pair<int,int>(gridbtnx+(i%btnperrow)*xSpace, gridbtny+(i/btnperrow)*ySpace);
+         };
+@@ -3433,7 +3433,7 @@ public:
+                           return false;
+                       });
+         }
+-        
++
+         for(const auto & sec : sections)
+         {
+             if (i != 0 && (i%16) == 0) bar->addItem(1, "|");
+@@ -3589,14 +3589,14 @@ public:
+             memset(path, 0, sizeof(path));
+             memset(parambuffer, 0, sizeof(parambuffer));
+             memset(params, 0, sizeof(params));
+-            
++
+             // We have to look in the OS/2 configuration for the default browser.
+             // First step: Find the configuration files
+             if (!PrfQueryProfile(hAnchor, &profile)) {
+                 systemmessagebox(url.c_str(), "Could not query application handle", "ok", "error", 0);
+                 return;
+             }
+-            
++
+             // Second step: Open the configuration files and read exe path and parameters
+             os2Ini = PrfOpenProfile(hAnchor, (PCSZ)userPath);
+             if (os2Ini == NULLHANDLE) {
+@@ -3611,12 +3611,12 @@ public:
+ 
+             PrfQueryProfileString(os2Ini, (PCSZ)"WPURLDEFAULTSETTINGS", (PCSZ)"DefaultBrowserParameters", NULL, params, sizeof(params));
+             PrfCloseProfile(os2Ini);
+-            
++
+             // concat arguments
+-            if (strlen(params) > 0) 
++            if (strlen(params) > 0)
+                 strncat(params, " ", 20);
+             strncat(params, url.c_str(), url.length());
+-            
++
+             // Build parameter buffer
+             strcpy(parambuffer, "Browser");
+             paramptr = &parambuffer[strlen(parambuffer)+1];
+@@ -3770,28 +3770,28 @@ static void UI_Select(GUI::ScreenSDL *screen, int select) {
+             } break;
+         case 2: {
+             sec = control->GetSection("sdl");
+-            section=static_cast<Section_prop *>(sec); 
++            section=static_cast<Section_prop *>(sec);
+             auto *p = new SectionEditor(screen,50,30,section);
+             p->raise();
+             } break;
+         case 3:
+             sec = control->GetSection("dosbox");
+-            section=static_cast<Section_prop *>(sec); 
++            section=static_cast<Section_prop *>(sec);
+             new SectionEditor(screen,50,30,section);
+             break;
+         case 4:
+             sec = control->GetSection("mixer");
+-            section=static_cast<Section_prop *>(sec); 
++            section=static_cast<Section_prop *>(sec);
+             new SectionEditor(screen,50,30,section);
+             break;
+         case 5:
+             sec = control->GetSection("serial");
+-            section=static_cast<Section_prop *>(sec); 
++            section=static_cast<Section_prop *>(sec);
+             new SectionEditor(screen,50,30,section);
+             break;
+         case 6:
+             sec = control->GetSection("ne2000");
+-            section=static_cast<Section_prop *>(sec); 
++            section=static_cast<Section_prop *>(sec);
+             new SectionEditor(screen,50,30,section);
+             break;
+         case 7:
+@@ -3800,7 +3800,7 @@ static void UI_Select(GUI::ScreenSDL *screen, int select) {
+             break;
+         case 8:
+             sec = control->GetSection("glide");
+-            section=static_cast<Section_prop *>(sec); 
++            section=static_cast<Section_prop *>(sec);
+             new SectionEditor(screen,50,30,section);
+             break;
+         case 9: {
+@@ -4011,7 +4011,7 @@ static void UI_Select(GUI::ScreenSDL *screen, int select) {
+ #if defined(C_SDL2)
+         SDL_Window* GFX_GetSDLWindow(void);
+         SDL_UpdateWindowSurface(GFX_GetSDLWindow());
+-#else   
++#else
+         SDL_UpdateRect(sdlscreen, 0, 0, 0, 0);
+ #endif
+         SDL_Delay(20);
+@@ -4053,7 +4053,7 @@ void RunCfgTool(Bitu val) {
+ #if C_OPENGL
+         voodoo_ogl_update_dimensions();
+ #endif
+-    }    
++    }
+ #if defined(MACOSX) && defined(C_SDL2) && C_METAL
+     if(sdl.desktop.want_type == SCREEN_METAL){
+         OUTPUT_Metal_Shutdown();
+@@ -4061,10 +4061,16 @@ void RunCfgTool(Bitu val) {
+         change_output(3);
+ #endif
+         change_output(14);
+-    }  
++    }
+ #endif
+ }
+ 
++void GUI_Shortcut(int select) {
++    if(!select || running) return;
++#if defined(__ANDROID__)
++#include "SDL_system.h"
++#endif
++
+ void GUI_Shortcut(int select) {
+     if(!select || running) return;
+ 
+@@ -4080,9 +4086,14 @@ void GUI_Shortcut(int select) {
+         GFX_EndUpdate(nullptr);
+         switchttf = true;
+         PIC_AddEvent(RunCfgTool, 100);
+-    } else
++        return;
++    }
+ #endif
++#if defined(__ANDROID__)
++    SDL_AndroidSendMessage(0x8001, select);
++#else
+     RunCfgTool(0);
++#endif
+ }
+ 
+ void GUI_Run(bool pressed) {
+@@ -4095,7 +4106,12 @@ void GUI_Run(bool pressed) {
+         GFX_EndUpdate(nullptr);
+         switchttf = true;
+         PIC_AddEvent(RunCfgTool, 100);
+-    } else
++        return;
++    }
+ #endif
++#if defined(__ANDROID__)
++    SDL_AndroidSendMessage(0x8001, 0);
++#else
+     RunCfgTool(0);
++#endif
+ }
+diff --git a/src/gui/sdlmain.cpp b/src/gui/sdlmain.cpp
+index 86a2c6345..5cce3f7b4 100644
+--- a/src/gui/sdlmain.cpp
++++ b/src/gui/sdlmain.cpp
+@@ -1128,6 +1128,123 @@ Java_com_dosboxx_app_DosStatus_getStatusLine(JNIEnv *env, jclass clazz) {
+     (void)clazz;
+     return env->NewStringUTF(android_status_line);
+ }
++
++#include <sstream>
++#include <vector>
++
++static std::string json_escape(const std::string& s) {
++    std::stringstream ss;
++    for (size_t i = 0; i < s.length(); ++i) {
++        char c = s[i];
++        if (c == '"') ss << "\\\"";
++        else if (c == '\\') ss << "\\\\";
++        else if (c == '\b') ss << "\\b";
++        else if (c == '\f') ss << "\\f";
++        else if (c == '\n') ss << "\\n";
++        else if (c == '\r') ss << "\\r";
++        else if (c == '\t') ss << "\\t";
++        else if ((unsigned char)c < 32) {
++            char buf[8];
++            snprintf(buf, sizeof(buf), "\\u%04x", (int)c);
++            ss << buf;
++        } else ss << c;
++    }
++    return ss.str();
++}
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_dosboxx_app_DosConfig_getSections(JNIEnv *env, jclass clazz) {
++    (void)clazz;
++    std::vector<std::string> names;
++    for (int i = 0; ; ++i) {
++        Section* s = control->GetSection(i);
++        if (!s) break;
++        names.push_back(s->GetName());
++    }
++    jclass stringClass = env->FindClass("java/lang/String");
++    jobjectArray array = env->NewObjectArray((jsize)names.size(), stringClass, NULL);
++    for (size_t i = 0; i < names.size(); ++i) {
++        env->SetObjectArrayElement(array, (jsize)i, env->NewStringUTF(names[i].c_str()));
++    }
++    return array;
++}
++
++extern "C" JNIEXPORT jstring JNICALL
++Java_com_dosboxx_app_DosConfig_getSectionProperties(JNIEnv *env, jclass clazz, jstring sectionName) {
++    (void)clazz;
++    const char* nativeSectionName = env->GetStringUTFChars(sectionName, 0);
++    Section* s = control->GetSection(nativeSectionName);
++    env->ReleaseStringUTFChars(sectionName, nativeSectionName);
++
++    if (!s) return env->NewStringUTF("[]");
++
++    Section_prop* sp = dynamic_cast<Section_prop*>(s);
++    if (!sp) return env->NewStringUTF("[]");
++
++    std::stringstream ss;
++    ss << "[";
++    bool first = true;
++    for (int i = 0; ; ++i) {
++        Property* p = sp->Get_prop(i);
++        if (!p) break;
++
++        if (!first) ss << ",";
++        first = false;
++
++        ss << "{";
++        ss << "\"name\":\"" << json_escape(p->propname) << "\",";
++        ss << "\"type\":" << (int)p->Get_type() << ",";
++        ss << "\"value\":\"" << json_escape(p->GetValue().ToString()) << "\",";
++        ss << "\"default\":\"" << json_escape(p->Get_Default_Value().ToString()) << "\",";
++        ss << "\"help\":\"" << json_escape(p->Get_help() ? p->Get_help() : "") << "\",";
++        ss << "\"values\":[";
++        const std::vector<Value>& vals = p->GetValues();
++        for (size_t j = 0; j < vals.size(); ++j) {
++            if (j > 0) ss << ",";
++            ss << "\"" << json_escape(vals[j].ToString()) << "\"";
++        }
++        ss << "]}";
++    }
++    ss << "]";
++    return env->NewStringUTF(ss.str().c_str());
++}
++
++extern "C" JNIEXPORT jboolean JNICALL
++Java_com_dosboxx_app_DosConfig_setProperty(JNIEnv *env, jclass clazz, jstring sectionName, jstring propName, jstring value) {
++    (void)clazz;
++    const char* ns = env->GetStringUTFChars(sectionName, 0);
++    const char* np = env->GetStringUTFChars(propName, 0);
++    const char* nv = env->GetStringUTFChars(value, 0);
++
++    Section* s = control->GetSection(ns);
++    bool ok = false;
++    if (s) {
++        Section_prop* sp = dynamic_cast<Section_prop*>(s);
++        if (sp) {
++            Property* p = sp->Get_prop(np);
++            if (p) {
++                ok = p->SetValue(nv);
++                if (ok) {
++                    for (std::list<SectionFunction>::iterator i = sp->onpropchange.begin(); i != sp->onpropchange.end(); ++i) {
++                        (*i)(sp);
++                    }
++                }
++            }
++        }
++    }
++
++    env->ReleaseStringUTFChars(sectionName, ns);
++    env->ReleaseStringUTFChars(propName, np);
++    env->ReleaseStringUTFChars(value, nv);
++    return ok;
++}
++
++extern "C" JNIEXPORT jboolean JNICALL
++Java_com_dosboxx_app_DosConfig_saveConfig(JNIEnv *env, jclass clazz) {
++    (void)clazz;
++    if (control->configfiles.empty()) return false;
++    return control->PrintConfig(control->configfiles[0].c_str());
++}
+ #endif
+ 
+ void GFX_SetTitle(int32_t cycles, int frameskip, Bits timing, bool paused) {
+@@ -1244,11 +1361,11 @@ std::string replaceNewlineWithEscaped(const std::string& input) {
+             output += "'\\''";
+         }
+         else if (input[i] == '\n'){
+-            output += "\\n";   // '\n' needs to be replaced to "\\n" 
++            output += "\\n";   // '\n' needs to be replaced to "\\n"
+             i++;
+         }
+         //else if (input[i] == '\"'){
+-        //    output += "\\\"";   // '"' needs to be replaced to "\\\"" 
++        //    output += "\\\"";   // '"' needs to be replaced to "\\\""
+         //    i++;
+         //}
+         else {
+@@ -1264,18 +1381,18 @@ std::string replaceNewlineWithEscaped(const std::string& input) {
+ 
+     while(i < input.length()) {
+         if(input[i] == '\\') {
+-            if(input[i + 1] != 'n') output += '\\'; // "\n" needs to be escaped to "\\n" 
++            if(input[i + 1] != 'n') output += '\\'; // "\n" needs to be escaped to "\\n"
+         }
+         else if(input[i] == '\n') {
+-            output += "\\\\n";   // '\n' needs to be replaced to "\\n" 
++            output += "\\\\n";   // '\n' needs to be replaced to "\\n"
+             i++;
+         }
+         else if(input[i] == '`') {
+-            output += "\\`";  // '`' needs to be replaced to "\\`" 
++            output += "\\`";  // '`' needs to be replaced to "\\`"
+             i++;
+         }
+         else if(input[i] == '"') {
+-            output += "\\\"";  // '"' needs to be replaced to "\\\"" 
++            output += "\\\"";  // '"' needs to be replaced to "\\\""
+             i++;
+         }
+         else {
+@@ -1311,9 +1428,9 @@ bool systemmessagebox(char const * aTitle, char const * aMessage, char const * a
+     size_t aTitleLength = strlen(aTitle);
+     char* lMessage = (char*)malloc((aMessageLength * 2 + 1) * sizeof(char));  // DBCS may expand to 3 to 4 bytes when converted to UTF-8
+     char* lTitle = (char*)malloc((aTitleLength * 2 + 1) * sizeof(char));  // DBCS may expand to 3 to 4 bytes when converted to UTF-8
+-    lDialogString = replaceNewlineWithEscaped(lDialogString); // String may include "\n" which needs to be escaped to "\\n" 
++    lDialogString = replaceNewlineWithEscaped(lDialogString); // String may include "\n" which needs to be escaped to "\\n"
+     CodePageGuestToHostUTF8(lMessage, lDialogString.c_str());
+-    lTitleString = replaceNewlineWithEscaped(lTitleString); // String may include "\n" which needs to be escaped to "\\n" 
++    lTitleString = replaceNewlineWithEscaped(lTitleString); // String may include "\n" which needs to be escaped to "\\n"
+     CodePageGuestToHostUTF8(lTitle, lTitleString.c_str());
+     bool result=tinyfd_messageBox(lTitle, lMessage, aDialogType, aIconType, aDefaultButton);
+     free(lMessage);

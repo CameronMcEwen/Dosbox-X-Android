@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.util.Log;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -69,7 +70,7 @@ final class GameImporter {
         final Uri uri = data.getData();
 
         if (requestCode == REQ_PICK_FOLDER) {
-            onFolderPickResult(a, uri, host);
+            onFolderPickResult(a, uri, host, data);
             return;
         }
 
@@ -121,14 +122,34 @@ final class GameImporter {
             .show();
     }
 
-    private static void onFolderPickResult(Activity a, Uri uri, GameLauncherActivity host) {
+    private static void onFolderPickResult(Activity a, Uri uri, GameLauncherActivity host, Intent data) {
+        Log.d("DosBoxX", "onFolderPickResult: uri=" + uri);
+        try {
+            int flags = data.getFlags()
+                    & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            //noinspection WrongConstant
+            a.getContentResolver().takePersistableUriPermission(uri, flags);
+        } catch (Exception e) {
+            Log.e("DosBoxX", "Failed to take persistable URI permission", e);
+        }
+
         DocumentFile root = DocumentFile.fromTreeUri(a, uri);
         if (root == null || !root.isDirectory()) {
+            Log.e("DosBoxX", "onFolderPickResult: root is null or not a directory");
             Toast.makeText(a, "Invalid folder selected.", Toast.LENGTH_SHORT).show();
             return;
         }
         String name = root.getName();
-        if (name == null) name = "Imported Folder";
+        Log.d("DosBoxX", "onFolderPickResult: name=" + name);
+        if (name == null || name.isEmpty() || name.equals("primary") || name.equals("home")) {
+            // Try to get a better name from the URI if root.getName() is generic
+            name = uri.getLastPathSegment();
+            if (name != null && name.contains(":")) {
+                name = name.substring(name.lastIndexOf(':') + 1);
+            }
+        }
+        if (name == null || name.isEmpty()) name = "Imported Folder";
+        
         showImportWizard(a, host, null, name, KIND_DOS_GAME, uri);
     }
 
@@ -274,7 +295,10 @@ final class GameImporter {
 
     private static boolean copyDocumentFile(Context context, DocumentFile src, File destDir) {
         if (src.isDirectory()) {
-            if (!destDir.exists() && !destDir.mkdirs()) return false;
+            if (!destDir.exists() && !destDir.mkdirs()) {
+                Log.e("DosBoxX", "copyDocumentFile: failed to create dir " + destDir);
+                return false;
+            }
             for (DocumentFile file : src.listFiles()) {
                 if (!copyDocumentFile(context, file, new File(destDir, file.getName()))) return false;
             }
@@ -282,35 +306,49 @@ final class GameImporter {
         } else {
             try (InputStream in = context.getContentResolver().openInputStream(src.getUri());
                  OutputStream out = new FileOutputStream(destDir)) {
-                if (in == null) return false;
+                if (in == null) {
+                    Log.e("DosBoxX", "copyDocumentFile: failed to open input stream for " + src.getUri());
+                    return false;
+                }
                 byte[] buf = new byte[65536];
                 int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                 return true;
-            } catch (Exception e) { return false; }
+            } catch (Exception e) {
+                Log.e("DosBoxX", "copyDocumentFile: error copying " + src.getUri() + " to " + destDir, e);
+                return false;
+            }
         }
     }
 
-    public static void showEditWizard(final Activity a, final String name, final Runnable onDone) {
+    public static void showEditWizard(final Activity a, final GameLauncherActivity host, final String name, final Runnable onDone) {
         String[] eras = {"Classic (1981-1987) - XT/AT, CGA/EGA", "Golden Era (1988-1992) - 386/486, VGA", "Late DOS (1993-1997) - Pentium, SVGA", "High Performance - Maxed out Pentium", "Custom / Advanced Machine"};
         final String[] eraPresets = {GameMeta.PRESET_80S, GameMeta.PRESET_90S_EARLY, GameMeta.PRESET_90S_LATE, GameMeta.PRESET_PENTIUM, GameMeta.PRESET_AUTO};
         new AlertDialog.Builder(a)
             .setTitle("Edit " + name + ": Era")
             .setItems(eras, (d, w) -> {
                 GameMeta.setPreset(a, name, eraPresets[w]);
-                showEditInputWizard(a, name, onDone);
+                showEditInputWizard(a, host, name, onDone);
             })
             .setNegativeButton("Cancel", null)
             .show();
     }
 
-    private static void showEditInputWizard(final Activity a, final String name, final Runnable onDone) {
-        String[] inputModes = {"Joystick Mode (Recommended for Gamepads)", "Keyboard Mode (Gamepad maps to arrow keys/ctrl/alt)"};
+    private static void showEditInputWizard(final Activity a, final GameLauncherActivity host, final String name, final Runnable onDone) {
+        String[] options = {
+            "Joystick Mode (Recommended for Gamepads)",
+            "Keyboard Mode (Gamepad maps to arrow keys/ctrl/alt)",
+            "Map Individual Buttons..."
+        };
         new AlertDialog.Builder(a)
             .setTitle("Edit " + name + ": Input")
-            .setItems(inputModes, (d, w) -> {
-                KeyMapStore.saveJoystickMode(a, name, w == 0);
-                if (onDone != null) onDone.run();
+            .setItems(options, (d, w) -> {
+                if (w == 2) {
+                    host.showControlMapper(name);
+                } else {
+                    KeyMapStore.saveJoystickMode(a, name, w == 0);
+                    if (onDone != null) onDone.run();
+                }
             })
             .setNegativeButton("Cancel", null)
             .show();

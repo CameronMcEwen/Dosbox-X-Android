@@ -50,6 +50,14 @@
             android:exported="true">
         </activity>
 
+        <activity
+            android:name="com.dosboxx.app.DosConfigActivity"
+            android:label="DOSBox-X Configuration"
+            android:process=":emu"
+            android:theme="@android:style/Theme.DeviceDefault"
+            android:configChanges="orientation|screenSize">
+        </activity>
+
         <!-- Custom in-app file browser. Replaces ACTION_OPEN_DOCUMENT /
              ACTION_OPEN_DOCUMENT_TREE so the launcher owns the back stack
              and the user can drill into folders with one Back press per
