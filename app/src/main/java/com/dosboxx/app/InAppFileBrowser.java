@@ -12,14 +12,17 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.SectionIndexer;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.content.Context;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * In-app file browser. Replaces the system SAF picker so the launcher owns
@@ -113,6 +116,7 @@ public class InAppFileBrowser extends Activity {
         root.addView(mPathView, plp);
 
         mList = new ListView(this);
+        mList.setFastScrollEnabled(true);
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         llp.topMargin = dp(8);
@@ -269,26 +273,7 @@ public class InAppFileBrowser extends Activity {
             ? emptyStateMessage(hideSystemNoise)
             : "");
         mEmptyView.setVisibility(noRealRows ? View.VISIBLE : View.GONE);
-        ArrayAdapter<Row> ad = new ArrayAdapter<Row>(this,
-                android.R.layout.simple_list_item_1, rows) {
-            @Override public View getView(int pos, View cv, ViewGroup parent) {
-                TextView v = (TextView) super.getView(pos, cv, parent);
-                Row r = rows.get(pos);
-                v.setText(r.label);
-                switch (r.kind) {
-                    case Row.KIND_PARENT: v.setTextColor(0xFF9FB6CC); break;
-                    case Row.KIND_HEADER: v.setTextColor(0xFF7A8A99); break;
-                    case Row.KIND_ROOT:   v.setTextColor(0xFF66CC66); break;
-                    case Row.KIND_BROWSE_DEVICE: v.setTextColor(0xFF66CC66); break;
-                    case Row.KIND_FOLDER: v.setTextColor(0xFFE0E0E0); break;
-                    case Row.KIND_FILE:
-                        v.setTextColor(mMode == MODE_PICK_FOLDER ? 0xFF556677 : 0xFFC0C8D0);
-                        break;
-                }
-                return v;
-            }
-        };
-        mList.setAdapter(ad);
+        mList.setAdapter(new RowAdapter(this, rows));
         mList.setOnItemClickListener((parent, view, position, id) -> {
             Row r = rows.get(position);
             switch (r.kind) {
@@ -405,5 +390,87 @@ public class InAppFileBrowser extends Activity {
         final File file;
         final String label;
         Row(int kind, File file, String label) { this.kind = kind; this.file = file; this.label = label; }
+    }
+
+    private class RowAdapter extends ArrayAdapter<Row> implements SectionIndexer {
+        private final List<Row> mItems;
+        private String[] mSections;
+        private int[] mSectionToPosition;
+        private int[] mPositionToSection;
+
+        RowAdapter(Context context, List<Row> items) {
+            super(context, android.R.layout.simple_list_item_1, items);
+            mItems = items;
+            initSections();
+        }
+
+        private void initSections() {
+            List<String> sectionList = new ArrayList<>();
+            List<Integer> positionList = new ArrayList<>();
+            mPositionToSection = new int[mItems.size()];
+
+            String lastChar = null;
+            for (int i = 0; i < mItems.size(); i++) {
+                Row r = mItems.get(i);
+                String name = r.file.getName();
+                if (r.kind == Row.KIND_PARENT) {
+                    name = "..";
+                }
+                String firstChar = name.isEmpty() ? "#" : name.substring(0, 1).toUpperCase(Locale.US);
+                if (firstChar.charAt(0) < 'A' || firstChar.charAt(0) > 'Z') {
+                    firstChar = "#";
+                }
+
+                if (lastChar == null || !lastChar.equals(firstChar)) {
+                    sectionList.add(firstChar);
+                    positionList.add(i);
+                    lastChar = firstChar;
+                }
+                mPositionToSection[i] = sectionList.size() - 1;
+            }
+
+            mSections = sectionList.toArray(new String[0]);
+            mSectionToPosition = new int[positionList.size()];
+            for (int i = 0; i < positionList.size(); i++) {
+                mSectionToPosition[i] = positionList.get(i);
+            }
+        }
+
+        @Override
+        public Object[] getSections() {
+            return mSections;
+        }
+
+        @Override
+        public int getPositionForSection(int sectionIndex) {
+            if (sectionIndex < 0) return 0;
+            if (sectionIndex >= mSectionToPosition.length) return mItems.size() - 1;
+            return mSectionToPosition[sectionIndex];
+        }
+
+        @Override
+        public int getSectionForPosition(int position) {
+            if (position < 0) return 0;
+            if (position >= mPositionToSection.length) return mSections.length - 1;
+            return mPositionToSection[position];
+        }
+
+        @Override
+        public View getView(int pos, View cv, ViewGroup parent) {
+            TextView v = (TextView) super.getView(pos, cv, parent);
+            Row r = mItems.get(pos);
+            v.setText(r.label);
+            switch (r.kind) {
+                case Row.KIND_PARENT: v.setTextColor(0xFF9FB6CC); break;
+                case Row.KIND_HEADER: v.setTextColor(0xFF7A8A99); break;
+                case Row.KIND_ROOT:   v.setTextColor(0xFF66CC66); break;
+                case Row.KIND_BROWSE_DEVICE: v.setTextColor(0xFF66CC66); break;
+                case Row.KIND_FOLDER: v.setTextColor(0xFFE0E0E0); break;
+                case Row.KIND_FILE:
+                    v.setTextColor(mMode == MODE_PICK_FOLDER ? 0xFF556677 : 0xFFC0C8D0);
+                    break;
+            }
+            return v;
+        }
     }
 }
