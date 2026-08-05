@@ -55,7 +55,7 @@
             android:name="com.dosboxx.app.DosConfigActivity"
             android:label="DOSBox-X Configuration"
             android:process=":emu"
-            android:theme="@android:style/Theme.DeviceDefault"
+            android:theme="@style/AppTheme"
             android:configChanges="orientation|screenSize">
         </activity>
 

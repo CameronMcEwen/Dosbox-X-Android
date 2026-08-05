@@ -64,3 +64,4 @@ jobs:
           name: libmain-${{ matrix.abi }}
           path: app/src/main/jniLibs/${{ matrix.abi }}/libmain.so
           if-no-files-found: error
+          retention-days: 2
