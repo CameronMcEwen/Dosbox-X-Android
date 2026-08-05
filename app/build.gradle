@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'com.dosboxx.app'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.dosboxx.app'
         minSdk 28
-        targetSdk 35
+        targetSdk 36
         versionCode 4
         versionName '1.0.3'
         ndk {
@@ -53,10 +53,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 }
 
 dependencies {
+    implementation 'androidx.documentfile:documentfile:1.0.1'
+    implementation 'androidx.core:core:1.13.1'
 }

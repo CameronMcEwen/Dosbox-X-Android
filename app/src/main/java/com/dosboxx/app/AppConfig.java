@@ -33,6 +33,14 @@ final class AppConfig {
         prefs(c).edit().putString(KEY_BASE, dir.getAbsolutePath()).apply();
     }
 
+    static String getAdvancedSettings(Context c) {
+        return prefs(c).getString("advancedSettings", "");
+    }
+
+    static void setAdvancedSettings(Context c, String s) {
+        prefs(c).edit().putString("advancedSettings", s).apply();
+    }
+
     static void useDefault(Context c) {
         prefs(c).edit().remove(KEY_BASE).apply();
     }
@@ -44,6 +52,18 @@ final class AppConfig {
 
     static void markSetupDone(Context c) {
         prefs(c).edit().putBoolean("setupDone", true).apply();
+    }
+
+    static boolean shouldResetSetup(Context c) {
+        if (!prefs(c).getBoolean("setupReset_v2", false)) {
+            prefs(c).edit().putBoolean("setupReset_v2", true).apply();
+            return true;
+        }
+        return false;
+    }
+
+    static void resetSetup(Context c) {
+        prefs(c).edit().putBoolean("setupDone", false).apply();
     }
 
     static File defaultBase(Context c) {

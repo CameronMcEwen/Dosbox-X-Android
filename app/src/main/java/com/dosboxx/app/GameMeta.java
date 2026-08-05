@@ -23,6 +23,13 @@ final class GameMeta {
     static final String WIN95 = "win95";
     static final String WIN98 = "win98";
 
+    // Presets based on game era
+    static final String PRESET_AUTO = "auto";
+    static final String PRESET_80S  = "80s";  // XT/AT, CGA/EGA, slow
+    static final String PRESET_90S_EARLY = "90s_early"; // 386/486, VGA, medium
+    static final String PRESET_90S_LATE  = "90s_late";  // Pentium, SVGA, fast
+    static final String PRESET_PENTIUM   = "pentium";   // High-end
+
     /** True for any Windows 9x platform (95 or 98). */
     static boolean isWindows(String plat) {
         return WIN95.equals(plat) || WIN98.equals(plat);
@@ -38,6 +45,11 @@ final class GameMeta {
     static String platform(Context c, String name, String dflt) {
         JSONObject o = read(c, name);
         return o != null ? o.optString("platform", dflt) : dflt;
+    }
+
+    static String preset(Context c, String name, String dflt) {
+        JSONObject o = read(c, name);
+        return o != null ? o.optString("preset", dflt) : dflt;
     }
 
     static boolean needsCd(Context c, String name, boolean dflt) {
@@ -57,6 +69,7 @@ final class GameMeta {
     }
 
     static void setPlatform(Context c, String name, String p) { put(c, name, "platform", p); }
+    static void setPreset(Context c, String name, String p) { put(c, name, "preset", p); }
     static void setNeedsCd(Context c, String name, boolean b) { put(c, name, "needsCd", b); }
     static void setVoodoo(Context c, String name, boolean b) { put(c, name, "voodoo", b); }
     static void setCdMedia(Context c, String name, String mediaName) { put(c, name, "cdMedia", mediaName); }

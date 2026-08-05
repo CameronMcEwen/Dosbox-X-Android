@@ -33,7 +33,8 @@ final class ArchiveExtractor {
 
     private static boolean isDiscImage(String name) {
         String n = name.toLowerCase(Locale.US);
-        return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin") || n.endsWith(".img");
+        return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin") || n.endsWith(".img")
+            || n.endsWith(".lha") || n.endsWith(".whd") || n.endsWith(".hdf");
     }
 
     private static boolean isDosProgram(String name) {

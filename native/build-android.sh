@@ -28,7 +28,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SRC="$HERE/dosbox-x"
 TMP="$HERE/build"                       # scratch: build trees + toolchain shims
-API="${DBX_API:-28}"
+API="${DBX_API:-36}"
 read -r -a ABIS <<< "${DBX_ABIS:-arm64-v8a x86_64}"
 
 note() { printf '\n\033[1;36m>> %s\033[0m\n' "$*"; }
@@ -40,7 +40,9 @@ die()  { printf '\033[1;31mxx %s\033[0m\n' "$*" >&2; exit 1; }
 TOOLCHAIN="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64"
 [ -d "$TOOLCHAIN" ] || die "NDK toolchain not found at $TOOLCHAIN"
 [ -d "$SRC/.git" ] || [ -f "$SRC/.git" ] || die "Submodule missing — run: git submodule update --init native/dosbox-x"
-for t in autoconf automake nasm; do command -v "$t" >/dev/null || die "missing build tool: $t"; done
+for t in autoconf automake; do command -v "$t" >/dev/null || die "missing build tool: $t"; done
+# nasm is optional for non-x86 or can be disabled
+command -v nasm >/dev/null || warn "nasm not found — x86 optimizations will be disabled"
 
 # --- 1. select upstream ref ----------------------------------------------
 if [ "${DBX_NO_UPDATE:-0}" = "1" ]; then
@@ -142,7 +144,7 @@ EOF
       ac_cv_lib_rt_main=no \
       CPPFLAGS="-I$SDLINC -I$PNGINC -fPIC" \
       CFLAGS="-fPIC -O2" CXXFLAGS="-fPIC -O2" \
-      LDFLAGS="-L$JNI -L$LIBDIR -Wl,-rpath-link,$JNI -Wl,--allow-shlib-undefined" \
+      LDFLAGS="-L$JNI -L$LIBDIR -Wl,-rpath-link,$JNI -Wl,--allow-shlib-undefined -static-libstdc++" \
       LIBS="-lz -lm" ) \
     > "$BUILD/configure.log" 2>&1 \
     || { tail -20 "$BUILD/configure.log"; die "[$ABI] configure failed (see $BUILD/configure.log)"; }
