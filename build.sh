@@ -19,6 +19,7 @@ echo "Waiting for build to complete..."
 gh run watch "$RUN_ID" --repo "$REPO"
 
 echo "Downloading APK to $OUT_DIR..."
+rm -f "$OUT_DIR/app-debug.apk"
 gh run download "$RUN_ID" --repo "$REPO" --name "$ARTIFACT" --dir "$OUT_DIR"
 
 echo "Done: $OUT_DIR/app-debug.apk"
