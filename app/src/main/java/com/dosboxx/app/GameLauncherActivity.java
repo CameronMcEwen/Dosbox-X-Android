@@ -5,8 +5,11 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.DocumentsContract;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -51,6 +54,8 @@ import java.util.Map;
  */
 public class GameLauncherActivity extends Activity {
     private static final int REQ_PICK_STORAGE_FOLDER = 9001;
+
+    private boolean mWaitingForStoragePerm = false;
 
     private File gamesDir;
     private File cdsDir;     // CD library: discs not currently in any changer
@@ -103,6 +108,11 @@ public class GameLauncherActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        if (!hasAllFilesAccess()) {
+            requestAllFilesAccess();
+            return;
+        }
+
         initDirs();
         // The conf is always read by the emulator from the app's own dir.
         confFile = new File(getExternalFilesDir(null), "dosbox-x.conf");
@@ -134,6 +144,20 @@ public class GameLauncherActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (mWaitingForStoragePerm) {
+            mWaitingForStoragePerm = false;
+            if (!hasAllFilesAccess()) {
+                Toast.makeText(this, "All Files Access is required to use shared storage.", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
+            // Permission granted — finish the onCreate work that was deferred.
+            initDirs();
+            confFile = new File(getExternalFilesDir(null), "dosbox-x.conf");
+            if (AppConfig.shouldResetSetup(this)) AppConfig.resetSetup(this);
+            buildUi();
+            return;
+        }
         // If a game/Windows session is still alive, bring it back to the front
         // (resumes the guest where it left off) rather than sitting on the list.
         if (emulatorRunning()) {
@@ -710,6 +734,25 @@ public class GameLauncherActivity extends Activity {
     }
 
     /** Point games/cds/import at the configured base folder (app dir by default). */
+    private boolean hasAllFilesAccess() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager();
+    }
+
+    private void requestAllFilesAccess() {
+        mWaitingForStoragePerm = true;
+        new AlertDialog.Builder(this)
+            .setTitle("Storage permission needed")
+            .setMessage("DOSBox-X needs All Files Access to read and write games in shared storage.\n\nTap OK to open Settings, then enable \"Allow management of all files\".")
+            .setCancelable(false)
+            .setPositiveButton("Open Settings", (d, w) -> {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            })
+            .setNegativeButton("Quit", (d, w) -> finish())
+            .show();
+    }
+
     private void initDirs() {
         File base = AppConfig.baseDir(this);
         gamesDir = new File(base, "games");
