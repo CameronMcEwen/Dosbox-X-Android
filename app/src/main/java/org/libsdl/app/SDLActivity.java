@@ -649,142 +649,90 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         try { finishAndRemoveTask(); } catch (Throwable t) { finish(); }
     }
 
-    // ---- DosBoxX on-screen PC keyboard overlay ----
+    // ---- DosBoxX extra-keys bar (Termux-style) ----
+    // Two scrollable rows for modifiers and function keys; system keyboard
+    // handles regular typing. Single-tap ⌨ = system keyboard; long-press ⌨
+    // = extra-keys bar.
     private android.widget.LinearLayout mDosKeyPanel;
-    private android.widget.LinearLayout mDosCursorPanel;
-    // Keys are weight-sized so every row stretches edge-to-edge across the
-    // device; compact heights + translucency keep the game visible behind.
-    private int mDosKeyH = 42;          // smaller keys
-    private float mDosKeyTextSp = 13f;
-    private int mDosKeyBg = 0x99383838; // more see-through
 
-    /** Build a small toggle button + a full PC keyboard laid out like the
-     * real thing (staggered rows, wide Backspace/Enter/Shift/Space) that
-     * injects real key events into DOS. Always the full layout — every game
-     * and the Win98 guest get all keys; rows fill the device width. */
+    /** Build the compact 2-row extra-keys bar pinned to the screen bottom.
+     *  Row 1 (scrollable): ESC TAB CTRL ALT SHIFT F1–F12
+     *  Row 2 (scrollable): ← → ↑ ↓ HOME END PGUP PGDN INS DEL BKSP ENTER */
     private void setupDosKeyboardOverlay() {
-        final float d = getResources().getDisplayMetrics().density;
-        final int pad = (int)(4*d);
+        final float d   = getResources().getDisplayMetrics().density;
+        final int   KW  = (int)(54 * d);   // key width
+        final int   KH  = (int)(46 * d);   // key height (generous tap target)
+        final int   M   = (int)(1  * d);   // margin between keys
+        final int   pad = (int)(4  * d);
 
-        // Container pinned to the bottom by default; rows are weight-distributed.
-        // The user can drag the handle bar at the top of the panel to move it
-        // anywhere on screen (handy when a text field sits at the bottom and
-        // the keyboard would cover it). Long-press the handle to snap back
-        // to the bottom. While dragging, the per-key touch listeners stay
-        // active (touch events still hit the buttons), so keys remain
-        // responsive when the panel is in its new position.
         mDosKeyPanel = new android.widget.LinearLayout(this);
         mDosKeyPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
-        mDosKeyPanel.setBackgroundColor(0x55202020);   // more see-through
+        mDosKeyPanel.setBackgroundColor(0xEE1A1A1A);
         mDosKeyPanel.setVisibility(View.GONE);
 
-        // Thin drag-handle bar above the keys. The bar itself is the grab
-        // target; below it the row of keys is unaffected.
-        android.widget.LinearLayout handle = new android.widget.LinearLayout(this);
-        handle.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        handle.setGravity(android.view.Gravity.CENTER);
-        handle.setBackgroundColor(0x60505050);
-        android.widget.TextView grip = new android.widget.TextView(this);
-        grip.setText("≡  drag to move · long-press to snap bottom");
-        grip.setTextColor(0xFFE0E0E0);
-        grip.setTextSize(8f);
-        android.widget.LinearLayout.LayoutParams gripLp =
-            new android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
-        gripLp.gravity = android.view.Gravity.CENTER;
-        handle.addView(grip, gripLp);
-        android.widget.LinearLayout.LayoutParams handleLp =
-            new android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                (int)(14*d));
-        mDosKeyPanel.addView(handle, handleLp);
-        attachKeyboardDragHandler(handle);
+        // ── Row 1: modifiers + function keys ──────────────────────────────
+        android.widget.HorizontalScrollView hs1 = barScrollView();
+        android.widget.LinearLayout row1 = new android.widget.LinearLayout(this);
+        row1.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        addBarKey(row1, "ESC",   111, false, KW, KH, M, d);
+        addBarKey(row1, "TAB",    61, false, KW, KH, M, d);
+        addBarKey(row1, "CTRL",  113, true,  KW, KH, M, d);
+        addBarKey(row1, "ALT",    57, true,  KW, KH, M, d);
+        addBarKey(row1, "SHIFT",  59, true,  KW, KH, M, d);
+        for (int i = 1; i <= 12; i++)
+            addBarKey(row1, "F" + i, 130 + i, false, KW, KH, M, d);
+        hs1.addView(row1);
+        mDosKeyPanel.addView(hs1, barRowLp());
 
-        // The main (typewriter) block sums to about 15 weight units per row.
-        // The arrow/navigation cluster is a separate floating pad so the
-        // letter/number keys can use the full screen width.
-        {
-            // Row 1: ESC + function keys (main subtotal 13 -> pad to 15)
-            android.widget.LinearLayout row1 = newDosKeyRow();
-            addDosKey(row1, "ESC", 111, false, 1f);
-            for (int i=1;i<=12;i++) addDosKey(row1, "F"+i, 130+i, false, 1f); // F1=131..F12=142
+        // ── Row 2: navigation cluster ─────────────────────────────────────
+        android.widget.HorizontalScrollView hs2 = barScrollView();
+        android.widget.LinearLayout row2 = new android.widget.LinearLayout(this);
+        row2.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        addBarKey(row2, "←",    21, false, KW, KH, M, d);
+        addBarKey(row2, "→",    22, false, KW, KH, M, d);
+        addBarKey(row2, "↑",    19, false, KW, KH, M, d);
+        addBarKey(row2, "↓",    20, false, KW, KH, M, d);
+        addBarKey(row2, "HOME", 122, false, KW, KH, M, d);
+        addBarKey(row2, "END",  123, false, KW, KH, M, d);
+        addBarKey(row2, "PGUP",  92, false, KW, KH, M, d);
+        addBarKey(row2, "PGDN",  93, false, KW, KH, M, d);
+        addBarKey(row2, "INS",  124, false, KW, KH, M, d);
+        addBarKey(row2, "DEL",  112, false, KW, KH, M, d);
+        addBarKey(row2, "BKSP",  67, false, KW, KH, M, d);
+        addBarKey(row2, "ENTER", 66, false, KW, KH, M, d);
+        hs2.addView(row2);
+        mDosKeyPanel.addView(hs2, barRowLp());
 
-            android.widget.LinearLayout num = newDosKeyRow();
-            addDosKey(num, "`", 68, false, 1f);
-            int[] numKeys = {8,9,10,11,12,13,14,15,16,7};   // KEYCODE_1..9, 0
-            String[] numLabels = {"1","2","3","4","5","6","7","8","9","0"};
-            for (int i = 0; i < numKeys.length; i++) addDosKey(num, numLabels[i], numKeys[i], false, 1f);
-            addDosKey(num, "-", 69, false, 1f);
-            addDosKey(num, "=", 70, false, 1f);
-            addDosKey(num, "BKSP", 67, false, 2f);
-
-            android.widget.LinearLayout top = newDosKeyRow();
-            addDosKey(top, "TAB", 61, false, 1.5f);
-            int[] topKeys = {45,51,33,46,48,53,49,37,43,44};        // Q W E R T Y U I O P
-            String[] topLabels = {"Q","W","E","R","T","Y","U","I","O","P"};
-            for (int i = 0; i < topKeys.length; i++) addDosKey(top, topLabels[i], topKeys[i], false, 1f);
-            addDosKey(top, "[", 71, false, 1f);
-            addDosKey(top, "]", 72, false, 1f);
-            addDosKey(top, "\\", 73, false, 1.5f);
-
-            android.widget.LinearLayout home = newDosKeyRow();
-            addDosKey(home, "CAPS", 115, false, 1.75f);
-            int[] homeKeys = {29,47,32,34,35,36,38,39,40};          // A S D F G H J K L
-            String[] homeLabels = {"A","S","D","F","G","H","J","K","L"};
-            for (int i = 0; i < homeKeys.length; i++) addDosKey(home, homeLabels[i], homeKeys[i], false, 1f);
-            addDosKey(home, ";", 74, false, 1f);
-            addDosKey(home, "'", 75, false, 1f);
-            addDosKey(home, "ENTER", 66, false, 2.25f);
-
-            android.widget.LinearLayout bot = newDosKeyRow();
-            addDosKey(bot, "SHIFT", 59, true, 2.25f);   // latching modifier
-            int[] botKeys = {54,52,31,50,30,42,41};                 // Z X C V B N M
-            String[] botLabels = {"Z","X","C","V","B","N","M"};
-            for (int i = 0; i < botKeys.length; i++) addDosKey(bot, botLabels[i], botKeys[i], false, 1f);
-            addDosKey(bot, ",", 55, false, 1f);
-            addDosKey(bot, ".", 56, false, 1f);
-            addDosKey(bot, "/", 76, false, 1f);
-            addDosKey(bot, "SHIFT", 60, true, 2.75f);   // latching modifier
-
-            android.widget.LinearLayout sp = newDosKeyRow();
-            addDosKey(sp, "CTRL", 113, true, 1.5f);     // latching modifier
-            addDosKey(sp, "ALT", 57, true, 1.5f);       // latching modifier
-            addDosKey(sp, "SPACE", 62, false, 12f);
-        }
-
-        // Default position: pinned to the bottom (the initial state before
-        // the user has dragged it). The drag handler removes the
-        // ALIGN_PARENT_BOTTOM rule on first move and switches to explicit
-        // leftMargin/topMargin from then on.
-        // Smaller + horizontally centered (about 70% width); still draggable.
-        int kbW = (int)(getResources().getDisplayMetrics().widthPixels * 0.70f);
         RelativeLayout.LayoutParams plp = new RelativeLayout.LayoutParams(
-            kbW, RelativeLayout.LayoutParams.WRAP_CONTENT);
+            RelativeLayout.LayoutParams.MATCH_PARENT,
+            RelativeLayout.LayoutParams.WRAP_CONTENT);
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        plp.addRule(RelativeLayout.CENTER_HORIZONTAL);
         mLayout.addView(mDosKeyPanel, plp);
 
-        buildCursorPad(d);
-
         // Keyboard toggle — top-left.
+        // Single tap  → system (IME) keyboard for text entry.
+        // Long press  → extra-keys bar for modifiers / F-keys / nav.
         android.widget.Button toggle = new android.widget.Button(this);
-        toggle.setText("⌨");           // keyboard glyph
+        toggle.setText("⌨");
         toggle.setTextColor(0xFFFFFFFF);
         toggle.setBackgroundColor(0xA0303030);
-        toggle.setPadding(pad,pad,pad,pad);
+        toggle.setPadding(pad, pad, pad, pad);
         RelativeLayout.LayoutParams tlp = new RelativeLayout.LayoutParams(
             (int)(48*d), (int)(40*d));
         tlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         tlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
         toggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
+                toggleSoftKeyboard();
+                showOverlayButtons();
+            }
+        });
+        toggle.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
                 boolean show = mDosKeyPanel.getVisibility() != View.VISIBLE;
                 mDosKeyPanel.setVisibility(show ? View.VISIBLE : View.GONE);
-                if (mDosCursorPanel != null) {
-                    mDosCursorPanel.setVisibility(show ? View.VISIBLE : View.GONE);
-                }
                 showOverlayButtons();
+                return true;
             }
         });
         mLayout.addView(toggle, tlp);
@@ -1077,175 +1025,65 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         };
     }
 
-    /** Separate cursor/navigation pad so the main keyboard can keep full-width keys. */
-    private void buildCursorPad(final float d) {
-        mDosCursorPanel = new android.widget.LinearLayout(this);
-        mDosCursorPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
-        mDosCursorPanel.setBackgroundColor(0x90202020);
-        mDosCursorPanel.setPadding((int)(4*d), (int)(4*d), (int)(4*d), (int)(4*d));
-        mDosCursorPanel.setVisibility(View.GONE);
+    // ---- extra-keys bar helpers ------------------------------------------
 
-        android.widget.LinearLayout nav = cursorRow();
-        addCursorKey(nav, "INS", 124);
-        addCursorKey(nav, "HOME", 122);
-        addCursorKey(nav, "PGUP", 92);
-
-        android.widget.LinearLayout nav2 = cursorRow();
-        addCursorKey(nav2, "DEL", 112);
-        addCursorKey(nav2, "END", 123);
-        addCursorKey(nav2, "PGDN", 93);
-
-        android.widget.LinearLayout up = cursorRow();
-        addCursorGap(up);
-        addCursorKey(up, "↑", 19);
-        addCursorGap(up);
-
-        android.widget.LinearLayout arrows = cursorRow();
-        addCursorKey(arrows, "←", 21);
-        addCursorKey(arrows, "↓", 20);
-        addCursorKey(arrows, "→", 22);
-
-        RelativeLayout.LayoutParams cp = new RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-        cp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        cp.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-        cp.topMargin = (int)(48*d);
-        cp.rightMargin = (int)(8*d);
-        mLayout.addView(mDosCursorPanel, cp);
+    private android.widget.HorizontalScrollView barScrollView() {
+        android.widget.HorizontalScrollView sv = new android.widget.HorizontalScrollView(this);
+        sv.setHorizontalScrollBarEnabled(false);
+        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        return sv;
     }
 
-    private android.widget.LinearLayout cursorRow() {
-        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
-        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        mDosCursorPanel.addView(row, new android.widget.LinearLayout.LayoutParams(
-            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
-        return row;
+    private android.widget.LinearLayout.LayoutParams barRowLp() {
+        return new android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
     }
 
-    private void addCursorGap(android.widget.LinearLayout row) {
-        final float d = getResources().getDisplayMetrics().density;
-        View gap = new View(this);
-        row.addView(gap, new android.widget.LinearLayout.LayoutParams((int)(56*d), (int)(56*d)));
-    }
-
-    private void addCursorKey(android.widget.LinearLayout row, String label, final int keycode) {
-        final float d = getResources().getDisplayMetrics().density;
+    /** Add a fixed-width key to an extra-keys bar row.
+     *  Modifier keys latch (tap to hold, tap again to release). */
+    private void addBarKey(android.widget.LinearLayout row, String label,
+                            final int keycode, final boolean modifier,
+                            int w, int h, int marg, float d) {
         final android.widget.Button b = new android.widget.Button(this);
         b.setText(label);
         b.setTextColor(0xFFE0E0E0);
-        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f);
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11f);
         b.setAllCaps(false);
-        b.setBackgroundColor(mDosKeyBg);
+        b.setBackgroundColor(0xA0383838);
         b.setPadding((int)(2*d), 0, (int)(2*d), 0);
-        b.setMinHeight(0);
-        b.setMinimumHeight(0);
-        b.setMinWidth(0);
-        b.setMinimumWidth(0);
+        b.setMinHeight(0); b.setMinimumHeight(0);
+        b.setMinWidth(0);  b.setMinimumWidth(0);
         android.widget.LinearLayout.LayoutParams lp =
-            new android.widget.LinearLayout.LayoutParams((int)(56*d), (int)(56*d));
-        lp.setMargins((int)(2*d), (int)(2*d), (int)(2*d), (int)(2*d));
+            new android.widget.LinearLayout.LayoutParams(w, h);
+        lp.setMargins(marg, marg, marg, marg);
         b.setLayoutParams(lp);
-        b.setOnTouchListener(new View.OnTouchListener() {
-            @Override public boolean onTouch(View v, android.view.MotionEvent e) {
-                switch (e.getActionMasked()) {
-                    case android.view.MotionEvent.ACTION_DOWN:
-                        SDLActivity.onNativeKeyDown(keycode); v.setPressed(true); return true;
-                    case android.view.MotionEvent.ACTION_UP:
-                    case android.view.MotionEvent.ACTION_CANCEL:
-                        SDLActivity.onNativeKeyUp(keycode); v.setPressed(false); return true;
+        if (modifier) {
+            final boolean[] held = {false};
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    held[0] = !held[0];
+                    if (held[0]) { SDLActivity.onNativeKeyDown(keycode); b.setBackgroundColor(0xFF1565C0); }
+                    else         { SDLActivity.onNativeKeyUp(keycode);   b.setBackgroundColor(0xA0383838); }
                 }
-                return false;
-            }
-        });
+            });
+        } else {
+            b.setOnTouchListener(new View.OnTouchListener() {
+                @Override public boolean onTouch(View v, android.view.MotionEvent e) {
+                    switch (e.getActionMasked()) {
+                        case android.view.MotionEvent.ACTION_DOWN:
+                            SDLActivity.onNativeKeyDown(keycode); v.setPressed(true); return true;
+                        case android.view.MotionEvent.ACTION_UP:
+                        case android.view.MotionEvent.ACTION_CANCEL:
+                            SDLActivity.onNativeKeyUp(keycode); v.setPressed(false); return true;
+                    }
+                    return false;
+                }
+            });
+        }
         row.addView(b);
     }
 
-    /** Make the keyboard draggable via its handle bar. The handle is the
-     *  strip at the top of {@link #mDosKeyPanel}; pressing-and-dragging on
-     *  the keys themselves must keep typing (those listeners are
-     *  attached to each button), so the drag is isolated to the handle. */
-    private void attachKeyboardDragHandler(View handle) {
-        final float[] downXY = new float[2];
-        final boolean[] everMoved = new boolean[1];
-        final boolean[] snapped = new boolean[1];   // true once user has dragged at all
-        handle.setOnTouchListener(new View.OnTouchListener() {
-            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
-                RelativeLayout.LayoutParams lp =
-                    (RelativeLayout.LayoutParams) mDosKeyPanel.getLayoutParams();
-                switch (ev.getActionMasked()) {
-                    case android.view.MotionEvent.ACTION_DOWN:
-                        downXY[0] = ev.getRawX();
-                        downXY[1] = ev.getRawY();
-                        everMoved[0] = false;
-                        return true;
-                    case android.view.MotionEvent.ACTION_MOVE: {
-                        float dx = ev.getRawX() - downXY[0];
-                        float dy = ev.getRawY() - downXY[1];
-                        // Ignore jittery touches (less than 6 px in either axis)
-                        // so a tap on the handle doesn't shift the panel.
-                        if (!everMoved[0] && Math.abs(dx) < 6 && Math.abs(dy) < 6) {
-                            return true;
-                        }
-                        everMoved[0] = true;
-                        // First move: drop the bottom-pinned rule and switch
-                        // to explicit margins. After this, leftMargin /
-                        // topMargin drive the position.
-                        if (!snapped[0]) {
-                            lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0);
-                            // Seed the margins from wherever the panel
-                            // currently is, so the drag is continuous
-                            // rather than jumping to (0, 0).
-                            int[] loc = new int[2];
-                            mDosKeyPanel.getLocationOnScreen(loc);
-                            lp.leftMargin = loc[0];
-                            lp.topMargin = loc[1];
-                            snapped[0] = true;
-                        }
-                        int parentW = mLayout.getWidth();
-                        int parentH = mLayout.getHeight();
-                        int panelW = mDosKeyPanel.getWidth();
-                        int panelH = mDosKeyPanel.getHeight();
-                        if (parentW <= 0 || parentH <= 0 || panelW <= 0 || panelH <= 0) {
-                            return true;     // layout not settled yet
-                        }
-                        int newLeft = lp.leftMargin + (int) dx;
-                        int newTop  = lp.topMargin  + (int) dy;
-                        // Clamp so the panel stays fully on screen.
-                        newLeft = Math.max(0, Math.min(newLeft, parentW - panelW));
-                        newTop  = Math.max(0, Math.min(newTop,  parentH - panelH));
-                        lp.leftMargin = newLeft;
-                        lp.topMargin  = newTop;
-                        mDosKeyPanel.setLayoutParams(lp);
-                        downXY[0] = ev.getRawX();
-                        downXY[1] = ev.getRawY();
-                        return true;
-                    }
-                    case android.view.MotionEvent.ACTION_UP:
-                    case android.view.MotionEvent.ACTION_CANCEL:
-                        // A pure tap on the handle is a no-op (a touch on
-                        // the handle is not meaningful to the user).
-                        return true;
-                }
-                return false;
-            }
-        });
-        handle.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                // Snap back to the bottom — clear explicit margins and
-                // re-add the ALIGN_PARENT_BOTTOM rule. Convenient when the
-                // user has dragged it somewhere awkward.
-                RelativeLayout.LayoutParams lp =
-                    (RelativeLayout.LayoutParams) mDosKeyPanel.getLayoutParams();
-                lp.leftMargin = 0;
-                lp.topMargin = 0;
-                lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-                mDosKeyPanel.setLayoutParams(lp);
-                snapped[0] = false;
-                return true;
-            }
-        });
-    }
 
     // ---- auto-hiding overlay buttons (⌨ / CD▾ / ✕) for a clean "cursor only"
     //      view: they fade out 2s after a touch and reappear on the next touch.
@@ -1254,9 +1092,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable mHideOverlays = new Runnable() {
         @Override public void run() {
-            // Keep them up while the on-screen keyboard is open.
-            if ((mDosKeyPanel != null && mDosKeyPanel.getVisibility() == View.VISIBLE)
-                    || (mDosCursorPanel != null && mDosCursorPanel.getVisibility() == View.VISIBLE)) {
+            // Keep overlay buttons visible while the extra-keys bar is open.
+            if (mDosKeyPanel != null && mDosKeyPanel.getVisibility() == View.VISIBLE) {
                 showOverlayButtons();
                 return;
             }
@@ -1284,87 +1121,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             showOverlayButtons();   // reveal on touch; event still passes through
         }
         return super.dispatchTouchEvent(ev);
-    }
-
-    /** Append the right-hand nav cluster to a row: a spacer padding the main
-     *  block out to 15 units (so clusters line up across rows) + a separator,
-     *  then 3 columns that are each a key (label+code) or, if label==null, a
-     *  blank spacer of equal width. Keeps every row the same total width. */
-    private void navCluster(android.widget.LinearLayout row, float mainWeight,
-                            String l1, int c1, String l2, int c2, String l3, int c3) {
-        final float NW = 1.3f;
-        addDosGap(row, (15f - mainWeight) + 0.5f);   // fill to 15 + separator
-        navCell(row, l1, c1, NW);
-        navCell(row, l2, c2, NW);
-        navCell(row, l3, c3, NW);
-    }
-
-    private void navCell(android.widget.LinearLayout row, String label, int code, float w) {
-        if (label == null) addDosGap(row, w);
-        else                addDosKey(row, label, code, false, w);
-    }
-
-    private void addDosGap(android.widget.LinearLayout row, float weight) {
-        View s = new View(this);
-        s.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, 1, weight));
-        row.addView(s);
-    }
-
-    /** New full-width keyboard row appended to the panel. */
-    private android.widget.LinearLayout newDosKeyRow() {
-        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
-        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        mDosKeyPanel.addView(row, new android.widget.LinearLayout.LayoutParams(
-            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
-        return row;
-    }
-
-    /** Add a key sized by layout weight — rows share the full device width,
-     *  so weights reproduce a real keyboard's stagger (e.g. Shift = 2.25). */
-    private void addDosKey(android.widget.LinearLayout row, String label, final int keycode,
-                           final boolean modifier, float weight) {
-        final float d = getResources().getDisplayMetrics().density;
-        final android.widget.Button b = new android.widget.Button(this);
-        b.setText(label);
-        b.setTextColor(0xFFE0E0E0);
-        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, mDosKeyTextSp);
-        b.setAllCaps(false);
-        b.setBackgroundColor(mDosKeyBg);
-        b.setPadding((int)(2*d),0,(int)(2*d),0);
-        b.setMinHeight(0);
-        b.setMinimumHeight(0);
-        b.setMinWidth(0);
-        b.setMinimumWidth(0);
-        android.widget.LinearLayout.LayoutParams lp =
-            new android.widget.LinearLayout.LayoutParams(0, (int)(mDosKeyH*d), weight);
-        lp.setMargins((int)(1*d),(int)(1*d),(int)(1*d),(int)(1*d));
-        b.setLayoutParams(lp);
-        if (modifier) {
-            // latch: tap toggles the held state so combos like Ctrl+C work
-            final boolean[] held = { false };
-            b.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    held[0] = !held[0];
-                    if (held[0]) { SDLActivity.onNativeKeyDown(keycode); b.setBackgroundColor(0xFF1565C0); }
-                    else { SDLActivity.onNativeKeyUp(keycode); b.setBackgroundColor(mDosKeyBg); }
-                }
-            });
-        } else {
-            b.setOnTouchListener(new View.OnTouchListener() {
-                @Override public boolean onTouch(View v, android.view.MotionEvent e) {
-                    switch (e.getActionMasked()) {
-                        case android.view.MotionEvent.ACTION_DOWN:
-                            SDLActivity.onNativeKeyDown(keycode); v.setPressed(true); return true;
-                        case android.view.MotionEvent.ACTION_UP:
-                        case android.view.MotionEvent.ACTION_CANCEL:
-                            SDLActivity.onNativeKeyUp(keycode); v.setPressed(false); return true;
-                    }
-                    return false;
-                }
-            });
-        }
-        row.addView(b);
     }
 
     @Override

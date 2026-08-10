@@ -6,24 +6,24 @@ Fork of CrownParkComputing/Dosbox-X-Android. Prebuilt `.so` files are committed 
 
 ## Build an APK
 
-### 1. Trigger the build
+Build is done via **GitHub Actions** — no local Java/NDK needed. Use `build.sh` at the repo root:
+
+```bash
+./build.sh                  # trigger → wait → download
+./build.sh --download-only  # re-download last run without triggering
+```
+
+APK lands at `~/storage/downloads/app-debug.apk`. Open in a file manager to sideload.
+
+**Do not run `./gradlew` locally** — Java is not installed in the Termux environment.
+
+### Manual steps (equivalent to build.sh)
 ```bash
 gh workflow run build-apk.yml --repo CameronMcEwen/Dosbox-X-Android
-```
-
-### 2. Wait for it to complete
-```bash
-gh run watch --repo CameronMcEwen/Dosbox-X-Android
-```
-Takes ~5–10 minutes. Ctrl-C is safe — it won't cancel the run.
-
-### 3. Download the APK
-```bash
+gh run watch --repo CameronMcEwen/Dosbox-X-Android   # Ctrl-C safe, won't cancel
 gh run download --repo CameronMcEwen/Dosbox-X-Android \
-  --name dosbox-x-debug \
-  --dir ~/storage/downloads
+  --name dosbox-x-debug --dir ~/storage/downloads
 ```
-APK lands at `~/storage/downloads/app-debug.apk`. Open it in a file manager to sideload.
 
 ## Updating from upstream
 
