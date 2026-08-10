@@ -55,8 +55,6 @@ import java.util.Map;
 public class GameLauncherActivity extends Activity {
     private static final int REQ_PICK_STORAGE_FOLDER = 9001;
 
-    private boolean mWaitingForStoragePerm = false;
-
     private File gamesDir;
     private File cdsDir;     // CD library: discs not currently in any changer
     private File importDir;  // drop folder for .zip game archives
@@ -144,14 +142,12 @@ public class GameLauncherActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (mWaitingForStoragePerm) {
-            mWaitingForStoragePerm = false;
-            if (!hasAllFilesAccess()) {
-                Toast.makeText(this, "All Files Access is required to use shared storage.", Toast.LENGTH_LONG).show();
-                finish();
-                return;
-            }
-            // Permission granted — finish the onCreate work that was deferred.
+        if (!hasAllFilesAccess()) {
+            requestAllFilesAccess();
+            return;
+        }
+        if (confFile == null) {
+            // Deferred init: permission was just granted after onCreate returned early.
             initDirs();
             confFile = new File(getExternalFilesDir(null), "dosbox-x.conf");
             if (AppConfig.shouldResetSetup(this)) AppConfig.resetSetup(this);
@@ -739,10 +735,9 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void requestAllFilesAccess() {
-        mWaitingForStoragePerm = true;
         new AlertDialog.Builder(this)
             .setTitle("Storage permission needed")
-            .setMessage("DOSBox-X needs All Files Access to read and write games in shared storage.\n\nTap OK to open Settings, then enable \"Allow management of all files\".")
+            .setMessage("DOSBox-X needs All Files Access to read and write games in shared storage.\n\nTap \"Open Settings\", then enable \"Allow management of all files\", then press Back.")
             .setCancelable(false)
             .setPositiveButton("Open Settings", (d, w) -> {
                 Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
