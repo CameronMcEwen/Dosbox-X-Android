@@ -1,5 +1,7 @@
 # Dosbox-X-Android
 
+> **New session?** Read `session.txt` in this repo root first — it has full context on what was built and why.
+
 Fork of CrownParkComputing/Dosbox-X-Android. Prebuilt `.so` files are committed — no NDK compilation needed.
 
 ## Build an APK

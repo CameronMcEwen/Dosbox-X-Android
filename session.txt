@@ -1,0 +1,29 @@
+## Session Summary
+
+### Goal
+Build a free sideloadable APK of DOSBox-X for Android, avoiding the $2.49 Play Store purchase from whittyapps.
+
+### Repo
+Fork of CrownParkComputing/Dosbox-X-Android at github.com/CameronMcEwen/Dosbox-X-Android
+Cloned locally at ~/Dosbox-X-Android on Termux (Android 14).
+
+### What was done
+
+1. Confirmed no GitHub Releases exist on the upstream repo.
+2. Found two existing workflows: native-core.yml (rebuilds .so files) and signed-aab.yml (produces .aab for Play Store — not sideloadable).
+3. Confirmed all .so files (libmain.so, libSDL2.so, libpng16.so) are already committed for arm64-v8a and x86_64 — no NDK compile step needed.
+4. Added .github/workflows/build-apk.yml — triggers manually via workflow_dispatch, runs assembleDebug, uploads app-debug.apk as artifact "dosbox-x-debug" with 7-day retention.
+5. Added build.sh — triggers build, waits, downloads APK to ~/storage/downloads/app-debug.apk. Supports -d/--download-only flag to skip build and fetch latest run artifact.
+6. Added MANAGE_EXTERNAL_STORAGE permission to AndroidManifest.xml and runtime request gate in GameLauncherActivity.java so the app can write to user-created folders in shared storage (e.g. /storage/emulated/0/Dosbox/).
+7. Fixed a bug in the permission flow where mWaitingForStoragePerm was lost on activity recreation — replaced with confFile == null as the deferred-init signal.
+
+### Known working paths
+- DOSBox shared storage: /storage/emulated/0/Dosbox/
+- Mount C in dosbox config: mount c /storage/emulated/0/Dosbox/raw
+- APK download lands at: ~/storage/downloads/app-debug.apk
+
+### Current state
+All changes pushed to main. No open issues. Next logical steps might be:
+- Test the built APK end-to-end
+- Tune dosbox-x.conf defaults (CPU cycles, memory, scaler)
+- Set up upstream sync workflow to pull CrownParkComputing changes periodically
