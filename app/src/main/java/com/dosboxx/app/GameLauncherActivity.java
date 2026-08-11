@@ -1427,24 +1427,59 @@ public class GameLauncherActivity extends Activity {
         String conf = "[dosbox]\nmachine=" + machine + "\nmemsize=16\n\n"
                     + "[cpu]\ncputype=" + cpu + "\ncycles=" + cycles + "\n\n"
                     + "[autoexec]\n@echo off\ncls\necho Custom machine ready.\n";
-        
-        final EditText input = new EditText(this);
-        input.setGravity(android.view.Gravity.TOP);
-        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+
+        final EditText nameInput = new EditText(this);
+        nameInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                               android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        nameInput.setHint("Machine name");
+        nameInput.setText("Custom " + machine);
+
+        final EditText confInput = new EditText(this);
+        confInput.setGravity(android.view.Gravity.TOP);
+        confInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
                           android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE |
                           android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        input.setHorizontallyScrolling(true);
-        input.setTypeface(android.graphics.Typeface.MONOSPACE);
-        input.setText(conf);
+        confInput.setHorizontallyScrolling(true);
+        confInput.setTypeface(android.graphics.Typeface.MONOSPACE);
+        confInput.setText(conf);
+
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = dp(16);
+        layout.setPadding(pad, pad, pad, 0);
+        layout.addView(nameInput);
+        layout.addView(confInput);
 
         new AlertDialog.Builder(this)
             .setTitle("Review Custom Config")
-            .setView(input)
-            .setPositiveButton("Launch", (d, w) -> {
-                writeAndLaunch(input.getText().toString(), "custom_" + machine);
+            .setView(layout)
+            .setPositiveButton("Save & Launch", (d, w) -> {
+                String name = nameInput.getText().toString().trim();
+                if (name.isEmpty()) name = "Custom " + machine;
+                String finalConf = confInput.getText().toString();
+                saveCustomMachineFolder(name, finalConf);
+                writeAndLaunch(finalConf, name);
             })
             .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    private void saveCustomMachineFolder(String baseName, String conf) {
+        File folder = new File(gamesDir, baseName);
+        if (folder.exists()) {
+            // Deduplicate: "Custom vga 2", "Custom vga 3", ...
+            int n = 2;
+            while (new File(gamesDir, baseName + " " + n).exists()) n++;
+            folder = new File(gamesDir, baseName + " " + n);
+        }
+        folder.mkdirs();
+        try {
+            FileWriter w = new FileWriter(new File(folder, "dosbox-x.conf"), false);
+            w.write(conf);
+            w.close();
+        } catch (Exception e) {
+            Toast.makeText(this, "Failed to save machine: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void bootSpecificWin9x(String folderName, String imgName) {
@@ -4227,6 +4262,16 @@ public class GameLauncherActivity extends Activity {
      *  If no match is found there either, prompt the user to pick a disc
      *  from the library so the game can actually launch with a D: drive. */
     private void launchGame(File folder, File launcher) {
+        File savedConf = new File(folder, "dosbox-x.conf");
+        if (savedConf.exists()) {
+            try {
+                java.util.Scanner s = new java.util.Scanner(savedConf).useDelimiter("\\A");
+                writeAndLaunch(s.hasNext() ? s.next() : "", folder.getName());
+            } catch (Exception e) {
+                Toast.makeText(this, "Failed to read config: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         List<File> cds = new ArrayList<>();
         collectCds(folder, 3, cds);
         if (cds.isEmpty()) {
