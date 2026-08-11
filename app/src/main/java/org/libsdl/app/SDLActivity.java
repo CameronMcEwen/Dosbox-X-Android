@@ -668,7 +668,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mDosKeyPanel = new android.widget.LinearLayout(this);
         mDosKeyPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
         mDosKeyPanel.setBackgroundColor(0xEE1A1A1A);
-        mDosKeyPanel.setVisibility(View.GONE);
+        mDosKeyPanel.setVisibility(View.VISIBLE);  // always shown, like Termux
 
         // ── Row 1: modifiers + function keys ──────────────────────────────
         android.widget.HorizontalScrollView hs1 = barScrollView();
@@ -709,9 +709,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         mLayout.addView(mDosKeyPanel, plp);
 
-        // Keyboard toggle — top-left.
-        // Single tap  → system (IME) keyboard for text entry.
-        // Long press  → extra-keys bar for modifiers / F-keys / nav.
+        // Keyboard toggle — top-left. Tap to show/hide the system (IME) keyboard.
+        // The extra-keys bar is always visible; this only controls text input.
         android.widget.Button toggle = new android.widget.Button(this);
         toggle.setText("⌨");
         toggle.setTextColor(0xFFFFFFFF);
@@ -725,14 +724,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             @Override public void onClick(View v) {
                 toggleSoftKeyboard();
                 showOverlayButtons();
-            }
-        });
-        toggle.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                boolean show = mDosKeyPanel.getVisibility() != View.VISIBLE;
-                mDosKeyPanel.setVisibility(show ? View.VISIBLE : View.GONE);
-                showOverlayButtons();
-                return true;
             }
         });
         mLayout.addView(toggle, tlp);
@@ -1092,11 +1083,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable mHideOverlays = new Runnable() {
         @Override public void run() {
-            // Keep overlay buttons visible while the extra-keys bar is open.
-            if (mDosKeyPanel != null && mDosKeyPanel.getVisibility() == View.VISIBLE) {
-                showOverlayButtons();
-                return;
-            }
             for (View b : mOverlayButtons) {
                 b.animate().alpha(0f).setDuration(250).withEndAction(() -> b.setVisibility(View.GONE));
             }
