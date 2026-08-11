@@ -1464,6 +1464,46 @@ public class GameLauncherActivity extends Activity {
             .show();
     }
 
+    private void showCustomConfEditor(File confFile) {
+        String existing = "";
+        try {
+            java.util.Scanner s = new java.util.Scanner(confFile).useDelimiter("\\A");
+            existing = s.hasNext() ? s.next() : "";
+        } catch (Exception ignored) {}
+
+        EditText editor = new EditText(this);
+        editor.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE |
+                            android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        editor.setTypeface(android.graphics.Typeface.MONOSPACE);
+        editor.setTextSize(13);
+        editor.setText(existing);
+        editor.setBackgroundColor(0xFF0D1117);
+        editor.setTextColor(0xFFE6EDF3);
+        editor.setPadding(dp(12), dp(12), dp(12), dp(12));
+
+        android.widget.FrameLayout container = new android.widget.FrameLayout(this);
+        container.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        container.addView(editor);
+
+        new AlertDialog.Builder(this)
+            .setTitle(confFile.getParentFile() != null ? confFile.getParentFile().getName() : "dosbox-x.conf")
+            .setView(container)
+            .setPositiveButton("Save", (d, w) -> {
+                try {
+                    FileWriter fw = new FileWriter(confFile, false);
+                    fw.write(editor.getText().toString());
+                    fw.close();
+                } catch (Exception e) {
+                    Toast.makeText(this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            })
+            .setNegativeButton("Close", null)
+            .show();
+    }
+
     private void saveCustomMachineFolder(String baseName, String conf) {
         File folder = new File(gamesDir, baseName);
         if (folder.exists()) {
@@ -1668,7 +1708,12 @@ public class GameLauncherActivity extends Activity {
                 edit.setAllCaps(false);
                 edit.setTextSize(12);
                 edit.setOnClickListener(v -> {
-                    GameImporter.showEditWizard(GameLauncherActivity.this, GameLauncherActivity.this, e.name, () -> rescan());
+                    File customConf = e.isFolder ? new File(e.file, "dosbox-x.conf") : null;
+                    if (customConf != null && customConf.exists()) {
+                        showCustomConfEditor(customConf);
+                    } else {
+                        GameImporter.showEditWizard(GameLauncherActivity.this, GameLauncherActivity.this, e.name, () -> rescan());
+                    }
                 });
                 btns.addView(edit);
 
