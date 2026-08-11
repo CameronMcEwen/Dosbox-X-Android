@@ -709,12 +709,37 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         mLayout.addView(mDosKeyPanel, plp);
 
+        // In fullscreen/immersive mode adjustResize doesn't work, so the keyboard
+        // overlays the layout rather than shrinking it. Use WindowInsets (API 30+)
+        // to get the exact IME height and push the bar up by that amount, so it
+        // sits just above the keyboard. Bar is shown/hidden based on IME height.
+        getWindow().getDecorView().setOnApplyWindowInsetsListener(
+                new android.view.View.OnApplyWindowInsetsListener() {
+            @Override
+            public android.view.WindowInsets onApplyWindowInsets(
+                    android.view.View v, android.view.WindowInsets insets) {
+                int imeH = 0;
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    imeH = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+                } else {
+                    imeH = insets.getSystemWindowInsetBottom();
+                }
+                final int imeHeight = imeH;
+                mDosKeyPanel.post(new Runnable() {
+                    @Override public void run() {
+                        RelativeLayout.LayoutParams lp =
+                            (RelativeLayout.LayoutParams) mDosKeyPanel.getLayoutParams();
+                        lp.bottomMargin = imeHeight;
+                        mDosKeyPanel.setLayoutParams(lp);
+                        mDosKeyPanel.setVisibility(imeHeight > 0 ? View.VISIBLE : View.GONE);
+                    }
+                });
+                return v.onApplyWindowInsets(insets);
+            }
+        });
+
         // Keyboard toggle — top-left. Tap to show/hide the system (IME) keyboard;
-        // the extra-keys bar mirrors keyboard visibility exactly.
-        // ViewTreeObserver is unreliable in fullscreen/immersive mode, so we track
-        // state ourselves — the ⌨ button is the only keyboard trigger in this app
-        // (back is mapped to Escape, not keyboard dismiss).
-        final boolean[] imeOpen = {false};
+        // the extra-keys bar appears/disappears automatically via the insets listener.
         android.widget.Button toggle = new android.widget.Button(this);
         toggle.setText("⌨");
         toggle.setTextColor(0xFFFFFFFF);
@@ -726,9 +751,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         tlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
         toggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                imeOpen[0] = !imeOpen[0];
                 toggleSoftKeyboard();
-                mDosKeyPanel.setVisibility(imeOpen[0] ? View.VISIBLE : View.GONE);
                 showOverlayButtons();
             }
         });
