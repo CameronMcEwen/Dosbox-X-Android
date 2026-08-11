@@ -709,24 +709,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         mLayout.addView(mDosKeyPanel, plp);
 
-        // Track system keyboard visibility: show the extra-keys bar when the IME
-        // is open and hide it when the IME closes. adjustResize shrinks the window
-        // so mLayout.getWindowVisibleDisplayFrame() reflects the usable area above
-        // the keyboard; a shrink of >15% of root height means keyboard is open.
-        mLayout.getViewTreeObserver().addOnGlobalLayoutListener(
-                new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
-            private final android.graphics.Rect mRect = new android.graphics.Rect();
-            @Override public void onGlobalLayout() {
-                mLayout.getWindowVisibleDisplayFrame(mRect);
-                int rootH    = mLayout.getRootView().getHeight();
-                int hiddenH  = rootH - mRect.bottom;
-                boolean open = hiddenH > rootH * 0.15f;
-                mDosKeyPanel.setVisibility(open ? View.VISIBLE : View.GONE);
-            }
-        });
-
         // Keyboard toggle — top-left. Tap to show/hide the system (IME) keyboard;
-        // the extra-keys bar appears/disappears automatically with it.
+        // the extra-keys bar mirrors keyboard visibility exactly.
+        // ViewTreeObserver is unreliable in fullscreen/immersive mode, so we track
+        // state ourselves — the ⌨ button is the only keyboard trigger in this app
+        // (back is mapped to Escape, not keyboard dismiss).
+        final boolean[] imeOpen = {false};
         android.widget.Button toggle = new android.widget.Button(this);
         toggle.setText("⌨");
         toggle.setTextColor(0xFFFFFFFF);
@@ -738,7 +726,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         tlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
         toggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
+                imeOpen[0] = !imeOpen[0];
                 toggleSoftKeyboard();
+                mDosKeyPanel.setVisibility(imeOpen[0] ? View.VISIBLE : View.GONE);
                 showOverlayButtons();
             }
         });
