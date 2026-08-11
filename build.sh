@@ -15,6 +15,8 @@ for arg in "$@"; do
 done
 
 if [ "$DOWNLOAD_ONLY" = false ]; then
+    echo "Pushing to remote..."
+    git push
     echo "Triggering build..."
     gh workflow run "$WORKFLOW" --repo "$REPO"
 
