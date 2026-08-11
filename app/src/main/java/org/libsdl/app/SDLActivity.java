@@ -668,7 +668,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mDosKeyPanel = new android.widget.LinearLayout(this);
         mDosKeyPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
         mDosKeyPanel.setBackgroundColor(0xEE1A1A1A);
-        mDosKeyPanel.setVisibility(View.VISIBLE);  // always shown, like Termux
+        mDosKeyPanel.setVisibility(View.GONE);  // shown only when system keyboard is up
 
         // ── Row 1: modifiers + function keys ──────────────────────────────
         android.widget.HorizontalScrollView hs1 = barScrollView();
@@ -709,8 +709,24 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         mLayout.addView(mDosKeyPanel, plp);
 
-        // Keyboard toggle — top-left. Tap to show/hide the system (IME) keyboard.
-        // The extra-keys bar is always visible; this only controls text input.
+        // Track system keyboard visibility: show the extra-keys bar when the IME
+        // is open and hide it when the IME closes. adjustResize shrinks the window
+        // so mLayout.getWindowVisibleDisplayFrame() reflects the usable area above
+        // the keyboard; a shrink of >15% of root height means keyboard is open.
+        mLayout.getViewTreeObserver().addOnGlobalLayoutListener(
+                new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            private final android.graphics.Rect mRect = new android.graphics.Rect();
+            @Override public void onGlobalLayout() {
+                mLayout.getWindowVisibleDisplayFrame(mRect);
+                int rootH    = mLayout.getRootView().getHeight();
+                int hiddenH  = rootH - mRect.bottom;
+                boolean open = hiddenH > rootH * 0.15f;
+                mDosKeyPanel.setVisibility(open ? View.VISIBLE : View.GONE);
+            }
+        });
+
+        // Keyboard toggle — top-left. Tap to show/hide the system (IME) keyboard;
+        // the extra-keys bar appears/disappears automatically with it.
         android.widget.Button toggle = new android.widget.Button(this);
         toggle.setText("⌨");
         toggle.setTextColor(0xFFFFFFFF);
