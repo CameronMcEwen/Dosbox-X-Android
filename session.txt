@@ -17,13 +17,35 @@ Cloned locally at ~/Dosbox-X-Android on Termux (Android 14).
 6. Added MANAGE_EXTERNAL_STORAGE permission to AndroidManifest.xml and runtime request gate in GameLauncherActivity.java so the app can write to user-created folders in shared storage (e.g. /storage/emulated/0/Dosbox/).
 7. Fixed a bug in the permission flow where mWaitingForStoragePerm was lost on activity recreation — replaced with confFile == null as the deferred-init signal.
 
+### Keyboard overhaul (SDLActivity.java)
+
+Replaced the original full PC keyboard overlay (a draggable translucent keyboard covering ~70% of the screen) with a Termux-style system keyboard + extra-keys bar approach.
+
+**Problem with the old overlay:** Small keys, hard to tap accurately, obscured the game, draggable UI was awkward on touchscreen.
+
+**New design:**
+- Tap ⌨ → system (IME/Gboard) keyboard appears for text entry
+- Extra-keys bar automatically appears just above the keyboard, disappears with it
+- Bar row 1 (scrollable): ESC · TAB · CTRL · ALT · SHIFT · F1–F12
+- Bar row 2 (scrollable): ← → ↑ ↓ · HOME · END · PGUP · PGDN · INS · DEL · BKSP · ENTER
+- CTRL, ALT, SHIFT latch on tap (turn blue) and release on second tap — enables combos like Alt+Tab, Alt+F4 in Windows 3.1
+
+**Key implementation detail — why ViewTreeObserver/adjustResize failed:**
+In fullscreen/immersive mode (FLAG_FULLSCREEN + SYSTEM_UI_FLAG_IMMERSIVE_STICKY), adjustResize is a no-op; the layout does not actually shrink when the keyboard appears. ViewTreeObserver.OnGlobalLayoutListener therefore never sees a height change.
+
+**Working solution:** Register `setOnApplyWindowInsetsListener` on the decor view. On API 30+ use `WindowInsets.Type.ime()` for the exact IME height; pre-30 fall back to `systemWindowInsetBottom`. When IME height > 0, set `bottomMargin` on the bar's RelativeLayout params to push it above the keyboard and set visibility VISIBLE. When IME height == 0, set GONE.
+
+**Files changed:**
+- `app/src/main/java/org/libsdl/app/SDLActivity.java` — replaced setupDosKeyboardOverlay() (~400 lines removed), added addBarKey(), barScrollView(), barRowLp() helpers
+- `app/src/main/AndroidManifest.xml` — adjustResize removed (was added speculatively, not needed)
+
 ### Known working paths
 - DOSBox shared storage: /storage/emulated/0/Dosbox/
 - Mount C in dosbox config: mount c /storage/emulated/0/Dosbox/raw
 - APK download lands at: ~/storage/downloads/app-debug.apk
 
 ### Current state
-All changes pushed to main. No open issues. Next logical steps might be:
-- Test the built APK end-to-end
+All changes pushed to main. Keyboard working as of 2026-08-11. Next logical steps:
 - Tune dosbox-x.conf defaults (CPU cycles, memory, scaler)
 - Set up upstream sync workflow to pull CrownParkComputing changes periodically
+- Consider adding a few common Ctrl shortcuts (Ctrl+C, Ctrl+Z) as dedicated bar buttons
